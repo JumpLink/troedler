@@ -14,7 +14,8 @@
  * // came through undecoded. That is why the npm parsers are here.
  * //
  * // The upstream fix is under way (HTML5 tokenizer + selector engine in
- * // @gjsify/domparser). When it lands, this file becomes a thin adapter over
+ * // @gjsify/domparser; the URL half of the same sweep merged as ca681e1bb).
+ * // When it lands, this file becomes a thin adapter over
  * // `new DOMParser().parseFromString(html, 'text/html')` and the three npm
  * // dependencies come out — that is the whole reason the façade is this
  * // narrow. Re-measure at the next gjsify bump instead of trusting this note.

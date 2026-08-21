@@ -18,8 +18,10 @@
  * Assemble query strings as `${base}?${new URLSearchParams(...)}` instead —
  * spec-correct on both runtimes and unaffected by the gap.
  *
- * // gjsify gap (unfixed): fixed on branch `fix/url-searchparams-writeback`,
- * // not yet released. DELETE THIS GUARD at the gjsify bump that contains it —
+ * // fixed upstream in gjsify: merged 2026-08-21 as ca681e1bb (PR #1245) — the
+ * // live view, the query-state parse on assignment, the urlencoded serializer and
+ * // the empty-pair fix all landed together. NOT RELEASED YET, so the guard stays
+ * // until this project's @gjsify/* pin moves past it. DELETE IT AT THAT BUMP —
  * // and re-measure rather than trusting this note.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
