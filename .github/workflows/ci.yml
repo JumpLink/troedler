@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Node-free gjsify toolchain (mirrors postbote/bauplaner). Everything runs on the gjsify stack
+# pinned in app/package.json: `gjsify install --immutable` (from gjsify-lock.json), the bundled
+# `gjsify tsc` type-check, `gjsify build` for the CLI bundle, and the test bundle under both gjs
+# and node. Node is present only to bootstrap the gjsify CLI (its published bin is Node; its work
+# targets gjs).
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:44
+    steps:
+      # libgda-sqlite backs `node:sqlite` under GJS — without it the store cannot open a database
+      # and every test that touches saved searches fails at module load, not at the assertion.
+      # Unlike postbote there are no GOA/EDS typelibs here: troedler speaks HTTP, not D-Bus.
+      - name: Install system prerequisites (gjs + libgda)
+        run: >
+          dnf install -y --setopt=install_weak_deps=False
+          git tar xz findutils gjs
+          libgda libgda-sqlite
+
+      - uses: actions/checkout@v4
+
+      # Node 24 to bootstrap + run the gjsify CLI. gjsify's native install-backend prebuilds
+      # target node 24 — Fedora's default node 22 loads a mismatched ABI and segfaults
+      # `gjsify install`.
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      # Content-addressed tarball store: a warm cache lets `gjsify install --immutable` skip the
+      # download phase. Keyed on the lockfile.
+      - name: Cache gjsify tarball store
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/gjsify/tarballs
+          key: gjsify-tarballs-${{ hashFiles('gjsify-lock.json') }}
+          restore-keys: gjsify-tarballs-
+
+      # Bootstrap the gjsify CLI so `gjsify install` is runnable before node_modules exists. It
+      # must be the SAME version the deps pin — a global-CLI ↔ pinned-libs mismatch produces
+      # broken bundles. Read that version out of app/package.json rather than repeating it:
+      # hardcoded, it silently fell behind in a sibling project when the pin moved.
+      - name: Bootstrap the gjsify CLI
+        run: |
+          VERSION=$(node -p "require('./app/package.json').devDependencies['@gjsify/cli']")
+          echo "Bootstrapping @gjsify/cli@$VERSION (from app/package.json)"
+          npm install -g "@gjsify/cli@$VERSION"
+
+      - name: Install dependencies (gjsify install --immutable)
+        run: gjsify install --immutable
+
+      # -A includes `private: true` workspaces. Without it every packages/* is skipped and the
+      # type-check silently covers only the app.
+      - name: Type check (app + every package)
+        run: gjsify foreach -A check
+
+      - name: Lint
+        run: gjsify foreach -A lint
+
+      - name: Format check
+        run: gjsify workspace troedler-cli format:check
+
+      # A grep, because the thing it catches is invisible to everything else:
+      # `url.searchParams.set()` is a silent no-op under GJS and correct under
+      # Node, so the type check, the tests and a careful read all pass while the
+      # request goes out without its query string.
+      - name: Guard against URL mutation
+        run: node scripts/guard-url-mutation.mjs
+
+      - name: Build the CLI bundle
+        run: gjsify workspace troedler-cli build
+
+      # Runs on gjs AND node. No network here, and that is deliberate: every provider test works
+      # against fixtures through the pure parse layer. A test that needed a marketplace to be
+      # reachable would be a test that fails for reasons that are not our bugs.
+      - name: Tests (gjs + node)
+        run: gjsify workspace troedler-cli test
+
+      # Two phases: the default catalogue must be read-only tools only, and the write-enabled
+      # catalogue must be strictly larger. The gate fails CLOSED, so a tool that forgot its
+      # annotation goes missing rather than becoming silently reachable — this is what notices.
+      - name: MCP smoke test (stdio, both catalogues)
+        run: node app/tests/integration/mcp-gjs-smoke.mjs

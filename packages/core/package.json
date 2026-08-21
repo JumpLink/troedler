@@ -1,0 +1,17 @@
+{
+  "name": "@troedler/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure kernel: the Listing DTO, the SearchQuery, the MarketProvider port and its capability object, normalisation, post-filtering, dedup, grouping and ranking. No dependencies, no gi://, no node:* — so every interesting decision in this project is unit-testable on Node against fake providers.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit --project tsconfig.json",
+    "lint": "gjsify lint ."
+  },
+  "files": [
+    "src"
+  ]
+}

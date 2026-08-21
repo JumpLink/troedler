@@ -1,0 +1,153 @@
+/**
+ * Dedup, grouping and ranking — the part of this project that is actually new.
+ *
+ * `grouped` is the primary shape and `merged` is optional, which is the
+ * opposite of what a meta-search usually does. Two reasons, and the first is
+ * not aesthetic: eBay's API licence requires eBay rows in a public display to
+ * be "visually isolated from third-party listings", so a permanently
+ * interleaved list is the one layout that is not allowed to ship. The second
+ * is that it is simply more useful — knowing a thing costs 40 € on
+ * kleinanzeigen and 120 € on eBay is the answer; a single list sorted by price
+ * hides which market you are looking at.
+ */
+
+import { conditionRank } from './normalize.ts';
+import { normalizeTitle } from './normalize.ts';
+import type { Listing, ProviderId } from './listing.ts';
+import type { SortKey } from './query.ts';
+
+/**
+ * Drop repeats WITHIN one provider.
+ *
+ * Needed because paged results overlap: kleinanzeigen repeats its "Top-Anzeige"
+ * slots on every page, so a naive three-page fetch reports the same bicycle
+ * three times and the user believes there are three of them.
+ */
+export function dedupeWithinProvider(listings: readonly Listing[]): Listing[] {
+  const seen = new Set<string>();
+  const out: Listing[] = [];
+  for (const l of listings) {
+    if (seen.has(l.key)) continue;
+    seen.add(l.key);
+    out.push(l);
+  }
+  return out;
+}
+
+/**
+ * A key for "the same physical offer, seen twice".
+ *
+ * A GTIN is the only identity worth trusting across marketplaces; without one
+ * we fall back to normalised title plus price, which is deliberately
+ * conservative — it groups two listings of the same book at the same price and
+ * nothing else. Fuzzy title matching is NOT done here: it is exactly the kind
+ * of helpfulness that merges two different bicycles and then reports the wrong
+ * one as the cheaper.
+ */
+export function identityKey(l: Listing): string | null {
+  if (l.gtin) return `gtin:${l.gtin}`;
+  const t = normalizeTitle(l.title);
+  const p = l.price?.minor;
+  return t.length >= 12 && p !== undefined ? `tp:${t}:${p}` : null;
+}
+
+export interface ListingGroup {
+  /** What the rows have in common, when they were grouped at all. */
+  readonly identity: string | null;
+  readonly listings: readonly Listing[];
+}
+
+/**
+ * Group equal offers across providers. Rows without a trustworthy identity
+ * stay in a group of their own rather than being lumped together.
+ */
+export function groupByIdentity(listings: readonly Listing[]): ListingGroup[] {
+  const groups = new Map<string, Listing[]>();
+  const singles: ListingGroup[] = [];
+  for (const l of listings) {
+    const id = identityKey(l);
+    if (id === null) {
+      singles.push({ identity: null, listings: [l] });
+      continue;
+    }
+    const bucket = groups.get(id);
+    if (bucket) bucket.push(l);
+    else groups.set(id, [l]);
+  }
+  return [...[...groups].map(([identity, ls]) => ({ identity, listings: ls })), ...singles];
+}
+
+function priceOf(l: Listing): number {
+  const p = l.totalPrice ?? l.price;
+  // Unpriced rows sort last under every price order rather than first under
+  // ascending and last under descending, which is what a plain `?? 0` does.
+  return p ? p.minor : Number.MAX_SAFE_INTEGER;
+}
+
+export function sortListings(listings: readonly Listing[], sort: SortKey | undefined): Listing[] {
+  const out = [...listings];
+  switch (sort) {
+    case 'price-asc':
+      return out.sort((a, b) => priceOf(a) - priceOf(b));
+    case 'price-desc':
+      return out.sort((a, b) => {
+        const pa = a.totalPrice ?? a.price;
+        const pb = b.totalPrice ?? b.price;
+        if (!pa && !pb) return 0;
+        if (!pa) return 1;
+        if (!pb) return -1;
+        return pb.minor - pa.minor;
+      });
+    case 'newest':
+      return out.sort((a, b) => (b.listedAt ?? '').localeCompare(a.listedAt ?? ''));
+    case 'ending-soonest':
+      return out.sort((a, b) => {
+        // Only auctions really end. A fixed-price listing's end date rolls
+        // forward forever, so sorting it in would put permanent listings above
+        // an auction closing in ten minutes.
+        const ea = a.priceKind === 'auction' ? a.endsAt : null;
+        const eb = b.priceKind === 'auction' ? b.endsAt : null;
+        if (!ea && !eb) return 0;
+        if (!ea) return 1;
+        if (!eb) return -1;
+        return ea.localeCompare(eb);
+      });
+    default:
+      // Relevance across marketplaces has no shared meaning — each source ranks
+      // by its own opaque score. Keeping provider order and interleaving them
+      // fairly is the honest answer; inventing a cross-provider score would
+      // dress a guess up as a ranking.
+      return out;
+  }
+}
+
+/**
+ * Interleave providers round-robin so no single fast, chatty source fills the
+ * first screen. Only used for the relevance (default) order.
+ */
+export function interleaveByProvider(byProvider: ReadonlyMap<ProviderId, readonly Listing[]>): Listing[] {
+  const queues = [...byProvider.values()].map((l) => [...l]);
+  const out: Listing[] = [];
+  let progress = true;
+  while (progress) {
+    progress = false;
+    for (const q of queues) {
+      const next = q.shift();
+      if (next) {
+        out.push(next);
+        progress = true;
+      }
+    }
+  }
+  return out;
+}
+
+/** Best row in a group: cheapest, then better condition, then newer. */
+export function bestOf(group: ListingGroup): Listing {
+  return [...group.listings].sort(
+    (a, b) =>
+      priceOf(a) - priceOf(b) ||
+      conditionRank(a.condition) - conditionRank(b.condition) ||
+      (b.listedAt ?? '').localeCompare(a.listedAt ?? ''),
+  )[0];
+}

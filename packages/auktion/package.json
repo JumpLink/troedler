@@ -1,0 +1,22 @@
+{
+  "name": "@troedler/auktion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "zoll-auktion.de and justiz-auktion.de — German/Austrian public-authority auctions. Plain HTML, both robots.txt fully open. Zoll-Auktion searches server-side; Justiz-Auktion searches only through a PHP session and therefore refuses to — see docs/quellen/justiz-auktion.de.md.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit --project tsconfig.json",
+    "lint": "gjsify lint ."
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "@troedler/core": "*",
+    "@troedler/http": "*",
+    "@troedler/html": "*"
+  }
+}

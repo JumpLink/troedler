@@ -1,0 +1,22 @@
+{
+  "name": "@troedler/booklooker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Booklooker REST API v2.0 adapter — second-hand books.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit --project tsconfig.json",
+    "lint": "gjsify lint ."
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "@troedler/core": "*",
+    "@troedler/html": "*",
+    "@troedler/http": "*"
+  }
+}

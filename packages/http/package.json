@@ -1,0 +1,19 @@
+{
+  "name": "@troedler/http",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Outbound HTTP: the honest user agent, the per-host rate limiter, the robots.txt loader and the gate-checked fetch. Every request the project makes goes through here — there is no second way out.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit --project tsconfig.json",
+    "lint": "gjsify lint ."
+  },
+  "files": ["src"],
+  "dependencies": {
+    "@troedler/compliance": "*",
+    "@troedler/core": "*"
+  }
+}

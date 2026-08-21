@@ -1,0 +1,103 @@
+/**
+ * The config manifest — `$XDG_CONFIG_HOME/troedler/config.json`.
+ *
+ * Versioned from the first line (`version: 1`) so a later change is a
+ * migration rather than a guess about which shape a file on disk has. Written
+ * atomically via a temporary file plus rename, because a half-written config
+ * is the difference between "one setting is wrong" and "the tool will not
+ * start".
+ *
+ * The interesting field is `enabled`. A source whose terms forbid automated
+ * access is never switched on by the software; the user turns it on here, and
+ * `acknowledged` records that they were shown what they were agreeing to. That
+ * is the mechanism, not a comment: it is what lets this be a public MIT
+ * project without shipping a violation as a default.
+ */
+
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+import type { ProviderId } from '@troedler/core';
+
+export interface ProviderConfig {
+  readonly enabled?: boolean;
+  /**
+   * ISO date on which the user confirmed they read the source record for a
+   * provider whose terms forbid automated access. Required before such a
+   * provider will run, however `enabled` is set.
+   */
+  readonly acknowledged?: string;
+}
+
+export interface TroedlerConfig {
+  readonly version: 1;
+  readonly providers: Partial<Record<ProviderId, ProviderConfig>>;
+  readonly defaults: {
+    readonly postalCode?: string;
+    readonly radiusKm?: number;
+    readonly currency?: string;
+  };
+}
+
+export const EMPTY_CONFIG: TroedlerConfig = { version: 1, providers: {}, defaults: {} };
+
+export class ConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ConfigError';
+  }
+}
+
+function validate(raw: unknown, path: string): TroedlerConfig {
+  if (typeof raw !== 'object' || raw === null) throw new ConfigError(`${path}: kein JSON-Objekt.`);
+  const obj = raw as Record<string, unknown>;
+  if (obj.version !== 1) {
+    throw new ConfigError(`${path}: version ${String(obj.version)} unbekannt — erwartet 1.`);
+  }
+  const providers = (obj.providers ?? {}) as TroedlerConfig['providers'];
+  const defaults = (obj.defaults ?? {}) as TroedlerConfig['defaults'];
+  if (typeof providers !== 'object' || providers === null)
+    throw new ConfigError(`${path}: providers ist kein Objekt.`);
+  if (typeof defaults !== 'object' || defaults === null)
+    throw new ConfigError(`${path}: defaults ist kein Objekt.`);
+  return { version: 1, providers, defaults };
+}
+
+/** A missing file is not an error — it is a first run. */
+export function loadConfig(path: string): TroedlerConfig {
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch {
+    return EMPTY_CONFIG;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    throw new ConfigError(`${path}: ungültiges JSON (${err instanceof Error ? err.message : String(err)}).`);
+  }
+  return validate(parsed, path);
+}
+
+export function saveConfig(path: string, config: TroedlerConfig): void {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+  renameSync(tmp, path);
+}
+
+/**
+ * Read, change, write — re-validating the result.
+ *
+ * Re-validation matters: a mutation that produces a config this program would
+ * refuse to load is a bug worth catching while the old file is still on disk,
+ * not on the next start.
+ */
+export function mutateConfig(
+  path: string,
+  change: (config: TroedlerConfig) => TroedlerConfig,
+): TroedlerConfig {
+  const next = validate(change(loadConfig(path)), path);
+  saveConfig(path, next);
+  return next;
+}

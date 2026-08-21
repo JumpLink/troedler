@@ -1,0 +1,20 @@
+{
+  "name": "@troedler/kleinanzeigen",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "kleinanzeigen.de adapter over the public search pages, within what robots.txt permits. OFF by default: their terms forbid automated access — see docs/quellen/kleinanzeigen.de.md.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit --project tsconfig.json",
+    "lint": "gjsify lint ."
+  },
+  "files": ["src"],
+  "dependencies": {
+    "@troedler/core": "*",
+    "@troedler/http": "*",
+    "@troedler/html": "*"
+  }
+}

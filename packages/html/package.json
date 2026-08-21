@@ -1,0 +1,23 @@
+{
+  "name": "@troedler/html",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The single façade over HTML parsing and CSS selectors. Exists so that swapping the parser costs one file — see the gjsify note in src/index.ts.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit --project tsconfig.json",
+    "lint": "gjsify lint ."
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "css-select": "^7.0.0",
+    "domhandler": "^6.0.1",
+    "domutils": "^4.0.2",
+    "htmlparser2": "^12.0.0"
+  }
+}

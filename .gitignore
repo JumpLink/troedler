@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# gjsify
+.gjsify/
+
+# npm is not the package manager here — `gjsify install` is (see AGENTS.md).
+package-lock.json
+
+# ─── Secrets ──────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ─── Foreign listing data — NEVER commit ──────────────────────────────────
+# Defence in depth only. The real guarantee is that none of this is ever
+# WRITTEN here: the index defaults to $XDG_DATA_HOME/troedler/index.db and the
+# HTTP cache to $XDG_CACHE_HOME/troedler/, both overridable via TROEDLER_* —
+# never to a path inside this repo. This repository is PUBLIC, and the cache
+# holds other people's classified ads: seller pseudonyms, towns, free text. A
+# committed cache is a permanent leak of data that was never ours to publish.
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-*
+troedler-data/
+
+# Captured pages are for local measurement only. Test fixtures are SYNTHETIC —
+# see AGENTS.md. A real search-results page in the repo is a redistribution of
+# someone else's database, which is the one thing every marketplace's terms
+# forbid without exception.
+*.captured.html
+captures/
+
+# Editor / OS
+.DS_Store
+*.log

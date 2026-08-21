@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "troedler",
+  "description": "Multi-Marktplatz-Suche. Im Repo liegt nur das Geheimnis — alles andere steht bewusst ausserhalb.",
+
+  "//nichts-im-repo": "troedler schreibt NIE in sein eigenes Verzeichnis. Suchindex, Preishistorie, Konfiguration und HTTP-Cache liegen unter XDG im Home und sind im Hub-Manifest troedler-home.json erfasst. Das ist kein Zufall, sondern die Zusage aus packages/store/src/paths.ts: das Repo ist oeffentlich, und der Index enthaelt fremde Kleinanzeigen. Ein einmal committeter Index waere ein dauerhaftes Leck.",
+
+  "entries": [
+    {
+      "path": ".env",
+      "class": "secret",
+      "why": "API-Zugaenge der Marktplaetze (eBay Client-ID/Secret, Discogs-Token, Booklooker-Key). Der eBay-Keyset ist zwar neu erzeugbar, aber nur mit Login und Marketplace-Account-Deletion-Entscheidung; ohne die Datei laeuft keine einzige Quelle mit Auth."
+    }
+  ]
+}

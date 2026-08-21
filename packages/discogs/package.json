@@ -1,0 +1,19 @@
+{
+  "name": "@troedler/discogs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Discogs marketplace adapter. Official API, usable without a token.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit --project tsconfig.json",
+    "lint": "gjsify lint ."
+  },
+  "files": ["src"],
+  "dependencies": {
+    "@troedler/core": "*",
+    "@troedler/http": "*"
+  }
+}

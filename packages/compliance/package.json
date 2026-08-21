@@ -1,0 +1,18 @@
+{
+  "name": "@troedler/compliance",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The robots.txt parser and the gate that runs before every request, plus the source register (docs/quellen) and the opt-out list. Pure — the matcher is the piece that has to be right, so it is testable without a network.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit --project tsconfig.json",
+    "lint": "gjsify lint ."
+  },
+  "files": ["src"],
+  "dependencies": {
+    "@troedler/core": "*"
+  }
+}

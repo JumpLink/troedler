@@ -1,0 +1,22 @@
+{
+  "name": "troedler",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Troedler \u2014 search several second-hand marketplaces from one query, as a CLI and an MCP server. Runs on GJS via gjsify.",
+  "workspaces": [
+    "packages/*",
+    "app"
+  ],
+  "scripts": {
+    "check": "gjsify foreach -A check",
+    "lint": "gjsify foreach -A lint",
+    "guard": "node scripts/guard-url-mutation.mjs",
+    "format": "gjsify workspace troedler-cli format",
+    "format:check": "gjsify workspace troedler-cli format:check",
+    "build": "gjsify workspace troedler-cli build",
+    "start": "gjsify workspace troedler-cli start",
+    "test": "gjsify workspace troedler-cli test"
+  }
+}

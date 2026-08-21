@@ -1,0 +1,19 @@
+{
+  "name": "@troedler/ebay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "eBay Browse API adapter (EBAY_DE). Official API, OAuth client-credentials, no HTML path — see docs/quellen/ebay.de.md.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit --project tsconfig.json",
+    "lint": "gjsify lint ."
+  },
+  "files": ["src"],
+  "dependencies": {
+    "@troedler/core": "*",
+    "@troedler/http": "*"
+  }
+}
