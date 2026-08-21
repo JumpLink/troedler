@@ -311,19 +311,35 @@ TROEDLER_KLEINANZEIGEN_CATEGORY=fahrraeder     # Slug, c217 oder 217
 TROEDLER_KLEINANZEIGEN_LOCATION=hamburg/9409   # <slug>/<id>, ohne Umkreis
 ```
 
-## Partneranfrage
+## 8. Wer die Verantwortung trägt
 
-<!-- Diesen Abschnitt füllt die Hauptsession. Der Entwurf und die Konsequenzen je nach Antwort
-     stehen in docs/quellen/kleinanzeigen-partneranfrage.md. Hier gehört hinein: Absendedatum,
-     Adressat, Antwort (auch eine Absage) und was daraus im Code folgt. -->
+troedler ist ein quelloffenes, nicht-kommerzielles Werkzeug. Es läuft auf dem Rechner der Person,
+die es benutzt, mit deren IP, für deren eigene Suche. Es gibt keinen Dienst dahinter, keinen
+zentralen Crawler und keine Weitergabe der Treffer.
 
-Status: **noch nicht abgeschickt.** Entwurf, Adressaten und die Konsequenzen je nach Antwort:
-[kleinanzeigen-partneranfrage.md](kleinanzeigen-partneranfrage.md).
+Daraus folgt, wer für einen Abruf einsteht: **wer diese Quelle einschaltet, tut das im eigenen
+Namen und trägt die Folgen selbst.** § 5 der Nutzungsbedingungen bindet den Nutzer eines Dienstes,
+nicht den Autor eines Programms — und die Software trifft die Entscheidung nicht: sie liefert die
+Quelle abgeschaltet aus, zitiert die Klausel im Klartext und verlangt eine ausdrückliche
+Bestätigung, bevor sie überhaupt eine Anfrage stellt.
 
-Die Klausel in § 5 benennt selbst den einzigen Weg, der aus einem Verstoß eine erlaubte Nutzung
-macht — die ausdrückliche schriftliche Zustimmung. Solange die nicht vorliegt, bleibt dieser Adapter
-das, was er heute ist: abgeschaltet, dokumentiert, und bereit für den Fall, dass die Antwort ja
-lautet.
+Was das Projekt dafür tut, damit diese Entscheidung eine informierte ist:
+
+- die Klausel steht wörtlich in diesem Dokument und wird beim Einschalten angezeigt, nicht verlinkt;
+- der Adapter hält robots.txt ein, auch wenn er die AGB nicht einhält — er baut keine der
+  gesperrten Filter-URLs, wartet zwei Sekunden zwischen Anfragen und nutzt genau eine Verbindung;
+- er sendet einen wahrheitsgemäßen User-Agent, meldet sich also als das, was er ist;
+- er umgeht nichts: kein Browser-Spoofing, kein Login, kein Captcha-Bypass, kein Retry nach 403.
+
+Diese Trennung ist die eigentliche Aussage: **die AGB verletzt der Abruf, nicht das Programm.** Ein
+Programm, das die Quelle heimlich vorkonfiguriert hätte, würde diese Entscheidung für alle treffen,
+die es installieren. Deshalb liegt sie bei jedem Einzelnen, ausdrücklich und mit Datum in der
+Konfiguration.
+
+Eine Zustimmung von Kleinanzeigen wird **nicht** eingeholt. Sie ist für dieses Projekt weder
+realistisch — ein lesender Zugang wurde belegt genau einmal vergeben, als Konzernpartnerschaft —
+noch nötig: es tritt niemandem gegenüber als berechtigt auf, sondern sagt genau, was es tut und
+unter welcher Klausel das steht.
 
 ---
 

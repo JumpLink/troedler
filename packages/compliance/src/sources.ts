@@ -64,7 +64,7 @@ export const SOURCES: readonly SourceRecord[] = [
     checked: '2026-08-21',
     automatedAccess: 'forbidden',
     clause:
-      'Nutzungsbedingungen § 5: "ohne die ausdrückliche schriftliche Zustimmung von Kleinanzeigen Crawler, Spider, Scraper oder andere automatisierte Mechanismen zu nutzen, um auf die Kleinanzeigen-Dienste zuzugreifen und Inhalte zu sammeln" is prohibited.',
+      'Nutzungsbedingungen § 5 — untersagt ist es, „ohne die ausdrückliche schriftliche Zustimmung von Kleinanzeigen Crawler, Spider, Scraper oder andere automatisierte Mechanismen zu nutzen, um auf die Kleinanzeigen-Dienste zuzugreifen und Inhalte zu sammeln".',
   },
   {
     host: 'www.zoll-auktion.de',
@@ -91,7 +91,7 @@ export const SOURCES: readonly SourceRecord[] = [
     // Exactly the combination the source register exists to keep apart.
     automatedAccess: 'forbidden',
     clause:
-      'Nutzungsbedingungen: "Das automatische Auslesen oder Sammeln von Inhalten auf markt.de (z. B. durch Crawler, Spider oder Scraper) ist ohne ausdrückliche schriftliche Erlaubnis verboten." Also forbidden: collecting other users\' personal data, and copying or distributing third-party listing content.',
+      'Nutzungsbedingungen — „Das automatische Auslesen oder Sammeln von Inhalten auf markt.de (z. B. durch Crawler, Spider oder Scraper) ist ohne ausdrückliche schriftliche Erlaubnis verboten." Ebenso untersagt: personenbezogene Daten anderer Nutzer sammeln sowie fremde Anzeigeninhalte kopieren oder verbreiten.',
   },
   {
     host: 'www.quoka.de',

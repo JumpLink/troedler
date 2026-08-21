@@ -53,9 +53,20 @@ the terms clause quoted, whether an API exists, bot protection, date checked —
 |**Fixtures are synthetic.** Never commit a real listing, page capture, or database. Measure
 against live pages locally; commit only HTML you wrote yourself.
 
-Sources whose terms forbid automated access ship **off**, and `providers enable` refuses them
-without `--acknowledge`. That refusal is the mechanism that lets this be a public MIT project
-without shipping somebody else's terms violation as a default — do not "simplify" it away.
+Sources whose terms forbid automated access ship **off**. They are still OFFERED — this project
+does not decide for anybody what they may fetch from their own machine — but `providers enable`
+prints the operator's clause in full and refuses without `--acknowledge`, and the date lands in the
+config.
+
+That split is the point and must not be "simplified" away in either direction. **The request
+violates the terms, not the program**: troedler is non-commercial, runs locally, and never fetches
+such a source on its own initiative, so a user switching one on does it in their own name and
+carries it. Removing the refusal would make the project ship the decision as a default; removing
+the source would make it decide for the user instead. Neither is ours to do.
+
+No permission is sought from any operator, and none is implied. What the project offers instead is
+accuracy: the clause quoted, robots.txt still enforced even where the terms are not, the pace kept,
+and an agent string that says what it is.
 
 ## Package layout — and the rule that holds it together
 

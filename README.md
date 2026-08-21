@@ -50,9 +50,16 @@ time with a pause between them, under an honest user agent that says who it is a
 complain. It never logs in, never spoofs a browser, never works around a captcha or a bot wall, and
 never retries a refusal. When a marketplace says no, that is the answer.
 
-Marketplaces whose terms forbid automated access ship **switched off**, and turning one on requires
-reading its source record and passing `--acknowledge`. That decision belongs to a person, not to a
-default.
+Marketplaces whose terms forbid automated access ship **switched off**. troedler still offers them —
+it just will not fetch one for you until you say so: `providers enable` prints the operator's clause
+in full and refuses without `--acknowledge`.
+
+**Who carries that is you.** troedler is a non-commercial tool that runs on your machine, under your
+address, for your own search. The terms of a service bind the person using it, so switching a source
+on means requesting it in your own name and answering for it yourself. The software neither makes
+that call nor hides what it is: it ships the source off, quotes the sentence you would be going
+against, records the date you agreed, and then stays out of the way. Even switched on, it keeps
+every other limit — robots.txt, the pace, the honest user agent, no login, no circumvention.
 
 Nothing about a seller is stored — no names, no ids, no profiles. Phone numbers and e-mail
 addresses are stripped from listing text while parsing. Images are linked, never downloaded.
@@ -69,8 +76,9 @@ and `troedler robots <url>` answers whether a given URL may be fetched and which
 | Discogs | official API | on | Works without a token (25 requests/min; 60 with one). |
 | Booklooker | official API | on | Free API key. |
 | Zoll-Auktion, Justiz-Auktion | public HTML | on | German public-authority auctions; `robots.txt` fully open. |
-| markt.de, Quoka | public HTML | on | Both grant named bots access in `robots.txt`. |
-| kleinanzeigen.de | public HTML | **off** | Their terms forbid automated access. Read the source record before enabling. |
+| Quoka | public HTML | on | `robots.txt` open, terms silent on crawling. |
+| markt.de | public HTML | **off** | Open `robots.txt`, but the terms forbid automated access. |
+| kleinanzeigen.de | public HTML | **off** | Terms forbid automated access; `robots.txt` also blocks the price, radius, sort and seller filters. |
 
 ## Getting started
 

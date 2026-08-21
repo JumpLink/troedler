@@ -284,7 +284,7 @@ export function marktCapabilities(): ProviderCapabilities {
     termsDoc: MARKT_TERMS_DOC,
     disclaimer:
       'markt.de: Anzeigeninhalte dürfen laut Nutzungsbedingungen nicht kopiert, verändert oder verbreitet werden — die Treffer sind nur zum Ansehen da.',
-    note: `Aus. Die Nutzungsbedingungen von markt.de verbieten den automatisierten Abruf: „Das automatische Auslesen oder Sammeln von Inhalten auf markt.de (z. B. durch Crawler, Spider oder Scraper) ist ohne ausdrückliche schriftliche Erlaubnis verboten." Die robots.txt erlaubt die Suchpfade zwar (geprüft 2026-08-21), das ersetzt die schriftliche Erlaubnis aber nicht. Einschalten ist eine Entscheidung — siehe ${MARKT_TERMS_DOC}.`,
+    note: `Aus. Die Nutzungsbedingungen von markt.de verbieten den automatisierten Abruf: „Das automatische Auslesen oder Sammeln von Inhalten auf markt.de (z. B. durch Crawler, Spider oder Scraper) ist ohne ausdrückliche schriftliche Erlaubnis verboten." Die robots.txt erlaubt die Suchpfade zwar (geprüft 2026-08-21), das ersetzt die schriftliche Erlaubnis aber nicht. Wer die Quelle einschaltet, ruft sie vom eigenen Rechner und auf eigene Verantwortung ab — siehe ${MARKT_TERMS_DOC}.`,
   };
 }
 

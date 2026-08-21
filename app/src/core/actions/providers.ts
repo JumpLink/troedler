@@ -8,6 +8,7 @@
  * filter by price" in a view is how the surfaces start disagreeing.
  */
 
+import { sourceFor } from '@troedler/compliance';
 import type { ProviderId } from '@troedler/core';
 import { mutateConfig } from '@troedler/store';
 
@@ -68,12 +69,40 @@ export async function listProviders(context: Context, only?: ProviderId): Promis
   );
 }
 
+/**
+ * The refusal a person has to override in order to use a source whose operator
+ * forbids automated access.
+ *
+ * It quotes the clause rather than linking it, because a warning nobody reads
+ * is not a warning — and it names who carries the consequence. troedler is a
+ * local, non-commercial tool: the request goes out from the user's machine,
+ * with their address, for their own search, and the terms of a service bind
+ * the person using it. So the software does not make this call for anybody. It
+ * ships the source off, says exactly what is being agreed to, and then gets out
+ * of the way.
+ */
 export class AcknowledgementRequired extends Error {
   readonly termsDoc: string;
-  constructor(id: ProviderId, termsDoc: string, note: string | null) {
+  constructor(id: ProviderId, termsDoc: string, note: string | null, clause: string | null) {
     super(
-      `${id} lässt sich nicht ohne Bestätigung einschalten.\n\n${note ?? ''}\n\n` +
-        `Lies ${termsDoc} und schalte dann mit --acknowledge frei. Diese Entscheidung trifft der Mensch, nicht das Programm.`,
+      [
+        `${id} ist abgeschaltet und lässt sich nur ausdrücklich einschalten.`,
+        '',
+        note ?? '',
+        clause ? `\nKlausel des Anbieters:\n  ${clause}` : '',
+        '',
+        'Wer diese Quelle einschaltet, ruft sie vom eigenen Rechner, unter der eigenen',
+        'Adresse und für die eigene Suche ab — und trägt einen Verstoß gegen diese',
+        'Bedingungen selbst. troedler stellt die Anfrage nicht von sich aus und trifft',
+        'die Entscheidung nicht.',
+        '',
+        `Lies ${termsDoc}, dann:`,
+        `  troedler providers enable ${id} --acknowledge`,
+        '',
+        'Das Bestätigungsdatum landet in der Konfiguration.',
+      ]
+        .filter((line, index, all) => !(line === '' && all[index - 1] === ''))
+        .join('\n'),
     );
     this.name = 'AcknowledgementRequired';
     this.termsDoc = termsDoc;
@@ -84,10 +113,11 @@ export class AcknowledgementRequired extends Error {
  * Switch a provider on or off.
  *
  * A source that is off by default is off because its operator's terms forbid
- * automated access. Turning it on therefore requires `--acknowledge`, and the
- * date is written to the config. That is the whole mechanism by which this can
- * be a public MIT project without shipping somebody else's terms violation as
- * a default: the software refuses, and a person overrides it on the record.
+ * automated access. Turning it on requires `--acknowledge`, and the date is
+ * written to the config. That is the whole mechanism by which this can be a
+ * public, non-commercial project that still OFFERS the source: it never
+ * requests it on anyone's behalf by default, and whoever switches it on does so
+ * knowingly, in their own name, on the record.
  */
 export function setProviderEnabled(
   context: Context,
@@ -101,7 +131,7 @@ export function setProviderEnabled(
   const caps = provider.capabilities;
 
   if (enabled && !caps.enabledByDefault && !acknowledge && !context.config.providers[id]?.acknowledged) {
-    throw new AcknowledgementRequired(id, caps.termsDoc, caps.note);
+    throw new AcknowledgementRequired(id, caps.termsDoc, caps.note, sourceFor(caps.host)?.clause ?? null);
   }
 
   mutateConfig(context.configPath, (config) => ({

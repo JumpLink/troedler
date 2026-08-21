@@ -145,7 +145,7 @@ export function capabilitiesFor(scope: KleinanzeigenScope): ProviderCapabilities
     note:
       'Aus, weil die Nutzungsbedingungen von kleinanzeigen.de (§ 5) automatisierten Abruf ohne ausdrückliche schriftliche Zustimmung untersagen. ' +
       `Wer die Quelle trotzdem nutzen will, liest zuerst ${TERMS_DOC} und schaltet sie dann selbst frei ` +
-      '(`troedler providers enable kleinanzeigen`). Diese Entscheidung trifft der Nutzer, nicht die Software. ' +
+      '(`troedler providers enable kleinanzeigen --acknowledge`) — auf eigene Verantwortung. ' +
       'Preis-, Umkreis-, Sortier- und Anbieterfilter sind bei dieser Quelle laut robots.txt gesperrt und werden deshalb erst nach dem Abruf angewendet — höchstens 125 Treffer je Suche.',
   };
 }
