@@ -18,7 +18,7 @@
  */
 
 import { describe, expect, it } from '@gjsify/unit';
-import { ProviderError } from '@troedler/core';
+import { MARKETPLACE_TIME_ZONE, ProviderError } from '@troedler/core';
 import { HttpClient, RateLimiter } from '@troedler/http';
 import {
   MARKT_RADIUS_STEPS,
@@ -42,16 +42,27 @@ import {
 const NOW = new Date('2026-08-21T18:30:00+02:00');
 const NO_SCOPE: MarktScope = { region: null, category: null };
 
-/** Local wall clock of an ISO instant — the assertion that survives a CI in another zone. */
+/**
+ * The wall clock the SITE printed, read back in the site's own timezone.
+ *
+ * Not `date.getHours()`: that reads the reader's zone, so "heute 17:52" asserted as `h === 17`
+ * held on a Berlin laptop and failed in CI — while agreeing with an implementation that never
+ * did any zone arithmetic at all. What these tests mean is "the page said 17:52 and we kept
+ * that meaning", and this is how to say it.
+ */
 function local(iso: string | null): { d: number; m: number; y: number; h: number; min: number } {
-  const date = new Date(iso ?? '');
-  return {
-    d: date.getDate(),
-    m: date.getMonth(),
-    y: date.getFullYear(),
-    h: date.getHours(),
-    min: date.getMinutes(),
-  };
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: MARKETPLACE_TIME_ZONE,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).formatToParts(new Date(iso ?? ''));
+  const read = (type: string): number =>
+    Number.parseInt(parts.find((x) => x.type === type)?.value ?? 'x', 10);
+  return { d: read('day'), m: read('month') - 1, y: read('year'), h: read('hour') % 24, min: read('minute') };
 }
 
 // ---------------------------------------------------------------------------

@@ -82,7 +82,20 @@ jobs:
       # Runs on gjs AND node. No network here, and that is deliberate: every provider test works
       # against fixtures through the pure parse layer. A test that needed a marketplace to be
       # reachable would be a test that fails for reasons that are not our bugs.
-      - name: Tests (gjs + node)
+      #
+      # TWICE, in two timezones, and that is not belt-and-braces. Every source in this project
+      # prints German wall-clock time — "Heute, 17:08" — and reading those numbers with
+      # `new Date(...)` interprets them where the READER stands. That code passes on a Berlin
+      # laptop and is wrong everywhere else, so a single-zone run agrees with the bug for
+      # whoever wrote it. One of these two legs always disagrees.
+      - name: Tests (gjs + node, Europe/Berlin)
+        env:
+          TZ: Europe/Berlin
+        run: gjsify workspace troedler-cli test
+
+      - name: Tests (gjs + node, Pacific/Auckland)
+        env:
+          TZ: Pacific/Auckland
         run: gjsify workspace troedler-cli test
 
       # Two phases: the default catalogue must be read-only tools only, and the write-enabled

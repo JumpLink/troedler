@@ -91,14 +91,104 @@ export function parseGermanPrice(raw: string | null | undefined, currency = 'EUR
 }
 
 /**
- * Parse the relative dates classified ads print: `"Heute, 17:08"`,
- * `"Gestern, 14:29"`, `"26.04.2026"`.
+ * The wall clock a German marketplace prints is in ITS timezone, not ours.
  *
- * `now` is a parameter, not `new Date()`, because "Heute" is only meaningful
- * relative to something and a test that cannot pin that something is a test
- * that passes at 23:59 and fails at 00:01. Returns ISO 8601 UTC.
+ * Every classified site in this project writes local German time — "Heute, 17:08" means 17:08 in
+ * Germany, whoever is reading it. Building a `Date` from those numbers interprets them in the
+ * READER's zone, so the same page parsed in Berlin and in UTC yields timestamps two hours apart,
+ * and only one of them is right. That is not hypothetical: it is what turned CI red while the
+ * identical code passed on a Berlin laptop.
  */
-export function parseGermanDate(raw: string | null | undefined, now: Date): string | null {
+export const MARKETPLACE_TIME_ZONE = 'Europe/Berlin';
+
+/** The wall-clock fields an instant has in `timeZone`. */
+function zonedFields(instant: number, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(new Date(instant));
+
+  const read = (type: string): number =>
+    Number.parseInt(parts.find((p) => p.type === type)?.value ?? '0', 10);
+  // `hour12: false` still renders midnight as 24 in some ICU versions; normalise it.
+  const hour = read('hour') % 24;
+  return { year: read('year'), month: read('month'), day: read('day'), hour, minute: read('minute') };
+}
+
+function offsetMs(instant: number, timeZone: string): number {
+  const f = zonedFields(instant, timeZone);
+  return Date.UTC(f.year, f.month - 1, f.day, f.hour, f.minute) - Math.floor(instant / 60_000) * 60_000;
+}
+
+/**
+ * The instant at which `timeZone` shows this wall clock.
+ *
+ * Guess that the fields are UTC, correct by the zone's offset, then correct once more — the second
+ * pass matters only around a DST change, where the offset at the guessed instant differs from the
+ * offset at the real one.
+ */
+function zonedWallClockToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  timeZone: string,
+): number {
+  const guess = Date.UTC(year, month - 1, day, hour, minute);
+  const first = guess - offsetMs(guess, timeZone);
+  const second = guess - offsetMs(first, timeZone);
+  return second;
+}
+
+/**
+ * The instant, as an ISO string, at which `timeZone` shows this wall clock.
+ *
+ * Exported because adapters print date forms core does not know — a day and a month NAME with no
+ * year, for instance — and they must not each rebuild the zone arithmetic. Building a `Date` from
+ * wall-clock numbers reads them in the READER's zone, which is right in exactly one country.
+ */
+export function zonedWallClockIso(
+  year: number,
+  month: number,
+  day: number,
+  hour = 0,
+  minute = 0,
+  timeZone: string = MARKETPLACE_TIME_ZONE,
+): string | null {
+  const instant = zonedWallClockToUtc(year, month, day, hour, minute, timeZone);
+  return Number.isNaN(instant) ? null : new Date(instant).toISOString();
+}
+
+/** Today's calendar date where the marketplace lives — which is not always today here. */
+export function zonedToday(
+  now: Date,
+  timeZone: string = MARKETPLACE_TIME_ZONE,
+): { year: number; month: number; day: number } {
+  const f = zonedFields(now.getTime(), timeZone);
+  return { year: f.year, month: f.month, day: f.day };
+}
+
+/**
+ * Parse the relative dates classified ads print: `"Heute, 17:08"`, `"Gestern, 14:29"`,
+ * `"26.04.2026"`.
+ *
+ * `now` is a parameter, not `new Date()`, because "Heute" is only meaningful relative to something
+ * and a test that cannot pin that something is a test that passes at 23:59 and fails at 00:01.
+ * `timeZone` is a parameter for the same class of reason one level up: the answer must not depend
+ * on where the machine happens to stand. Returns ISO 8601 UTC.
+ */
+export function parseGermanDate(
+  raw: string | null | undefined,
+  now: Date,
+  timeZone: string = MARKETPLACE_TIME_ZONE,
+): string | null {
   const text = (raw ?? '').replace(INVISIBLE, '').trim();
   if (!text) return null;
 
@@ -108,22 +198,35 @@ export function parseGermanDate(raw: string | null | undefined, now: Date): stri
 
   const lower = text.toLowerCase();
   if (lower.startsWith('heute') || lower.startsWith('gestern')) {
-    const d = new Date(now.getTime());
-    if (lower.startsWith('gestern')) d.setDate(d.getDate() - 1);
-    d.setHours(hours, minutes, 0, 0);
-    return d.toISOString();
+    // Which calendar day "today" is depends on the zone too — at 00:30 in Berlin it is already
+    // tomorrow, while UTC is still on yesterday's date.
+    const today = zonedFields(now.getTime(), timeZone);
+    const dayShift = lower.startsWith('gestern') ? -1 : 0;
+    // Date.UTC normalises an out-of-range day, so the 1st minus one lands on the previous month.
+    const shifted = new Date(Date.UTC(today.year, today.month - 1, today.day + dayShift));
+    return new Date(
+      zonedWallClockToUtc(
+        shifted.getUTCFullYear(),
+        shifted.getUTCMonth() + 1,
+        shifted.getUTCDate(),
+        hours,
+        minutes,
+        timeZone,
+      ),
+    ).toISOString();
   }
 
   const dmy = text.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
   if (dmy) {
-    const d = new Date(
+    const instant = zonedWallClockToUtc(
       Number.parseInt(dmy[3], 10),
-      Number.parseInt(dmy[2], 10) - 1,
+      Number.parseInt(dmy[2], 10),
       Number.parseInt(dmy[1], 10),
       hours,
       minutes,
+      timeZone,
     );
-    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    return Number.isNaN(instant) ? null : new Date(instant).toISOString();
   }
   return null;
 }

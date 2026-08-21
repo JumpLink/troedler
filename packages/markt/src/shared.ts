@@ -17,6 +17,8 @@ import {
   parseGermanDate,
   parseGermanPrice,
   stripContactDetails,
+  zonedToday,
+  zonedWallClockIso,
   type Location,
   type ParsedPrice,
 } from '@troedler/core';
@@ -239,9 +241,13 @@ export function parseQuokaDate(raw: string | null | undefined, now: Date): strin
   if (month === undefined) return null;
 
   const day = Number.parseInt(m[1], 10);
-  const candidate = new Date(now.getFullYear(), month, day, 0, 0, 0, 0);
-  if (candidate.getTime() > now.getTime()) candidate.setFullYear(now.getFullYear() - 1);
-  return Number.isNaN(candidate.getTime()) ? null : candidate.toISOString();
+  // The year is inferred in the MARKETPLACE's calendar, and the wall clock is read there too —
+  // `new Date(year, month, day)` would read both in the reader's zone, which is right in exactly
+  // one country and shifts the date by a day for half of every night everywhere else.
+  const today = zonedToday(now);
+  const thisYear = zonedWallClockIso(today.year, month + 1, day);
+  if (thisYear === null) return null;
+  return Date.parse(thisYear) > now.getTime() ? zonedWallClockIso(today.year - 1, month + 1, day) : thisYear;
 }
 
 /**

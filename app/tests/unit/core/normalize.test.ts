@@ -93,26 +93,41 @@ export default async () => {
   });
 
   await describe('parseGermanDate', async () => {
-    // `now` is injected, so this test says the same thing at 23:59 as at 00:01.
-    const now = new Date('2026-08-21T12:00:00');
+    // Both parameters are injected, and for the same reason: the answer must not depend on when
+    // or WHERE this runs. `now` is pinned, and the wall clock on the page is read in the
+    // marketplace's zone rather than the reader's — asserted as exact instants, because a local
+    // getter would agree with a wrong implementation on a Berlin machine.
+    const now = new Date('2026-08-21T12:00:00.000Z'); // 14:00 in Berlin, CEST
 
-    await it('resolves "Heute" against the given now', async () => {
-      const iso = parseGermanDate('Heute, 17:08', now);
-      expect(iso !== null).toBe(true);
-      expect(new Date(iso!).getHours()).toBe(17);
-      expect(new Date(iso!).getDate()).toBe(21);
+    await it('reads "Heute" as a wall clock in the marketplace timezone', async () => {
+      expect(parseGermanDate('Heute, 17:08', now)).toBe('2026-08-21T15:08:00.000Z');
     });
 
-    await it('resolves "Gestern" to the previous day', async () => {
-      const iso = parseGermanDate('Gestern, 14:29', now);
-      expect(new Date(iso!).getDate()).toBe(20);
-      expect(new Date(iso!).getMinutes()).toBe(29);
+    await it('resolves "Gestern" to the previous day THERE', async () => {
+      expect(parseGermanDate('Gestern, 14:29', now)).toBe('2026-08-20T12:29:00.000Z');
     });
 
-    await it('reads an explicit dd.mm.yyyy', async () => {
-      const iso = parseGermanDate('26.04.2026', now);
-      expect(new Date(iso!).getMonth()).toBe(3);
-      expect(new Date(iso!).getDate()).toBe(26);
+    await it('uses the calendar day of the marketplace, not of the machine', async () => {
+      // 23:30 UTC is already the 22nd in Berlin. A reader in UTC who resolved "Heute" against
+      // its own date would be a day behind for half an hour every night.
+      const lateEvening = new Date('2026-08-21T23:30:00.000Z');
+      expect(parseGermanDate('Heute, 08:00', lateEvening)).toBe('2026-08-22T06:00:00.000Z');
+    });
+
+    await it('applies the right offset on both sides of the DST change', async () => {
+      // Summer is +02:00, winter +01:00. An implementation with a hardcoded offset — or one that
+      // used the machine's — gets exactly one of these two right.
+      expect(parseGermanDate('26.04.2026', now)).toBe('2026-04-25T22:00:00.000Z');
+      expect(parseGermanDate('15.01.2026', now)).toBe('2026-01-14T23:00:00.000Z');
+    });
+
+    await it('crosses a month boundary backwards for "Gestern"', async () => {
+      const firstOfMonth = new Date('2026-09-01T10:00:00.000Z');
+      expect(parseGermanDate('Gestern, 09:15', firstOfMonth)).toBe('2026-08-31T07:15:00.000Z');
+    });
+
+    await it('reads an explicit dd.mm.yyyy with a time', async () => {
+      expect(parseGermanDate('26.04.2026, 09:30', now)).toBe('2026-04-26T07:30:00.000Z');
     });
 
     await it('returns null for something it does not understand', async () => {
