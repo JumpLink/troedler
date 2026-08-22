@@ -63,6 +63,17 @@ export interface MarktSearchPage extends SearchPage {
   readonly partnerAds: number;
 }
 
+export interface QuokaSearchPage extends SearchPage {
+  /**
+   * Whether the page itself backed the seller-type filter we asked it for.
+   *
+   * The adapter reads it to decide whether `sellerType` may stay in `applied` —
+   * an unconfirmed filter must not be reported as pushed down, or `--explain`
+   * would claim a server-side guarantee nobody gave.
+   */
+  readonly sellerFilter: QuokaSellerFilterCheck;
+}
+
 // ---------------------------------------------------------------------------
 // markt.de
 // ---------------------------------------------------------------------------
@@ -272,8 +283,139 @@ export interface QuokaParseOptions extends ParseOptions {
    * page is private by construction. Passing that down is reporting a fact
    * about the request, not guessing a fact about the ad — which is why it is a
    * parameter here rather than a heuristic below.
+   *
+   * It is only stamped on when the page CONFIRMS the filter ran — see
+   * `checkQuokaSellerFilter`. A request is what we asked for; the strip is what
+   * the operator did.
    */
   readonly sellerType: SellerType;
+}
+
+/** Which side of Quoka's seller strip an entry is. */
+export type QuokaFacetKind = 'all' | 'private' | 'commercial';
+
+export interface QuokaUserTypeFacet {
+  /** `null` when the label is not one of the three this source has ever printed. */
+  readonly kind: QuokaFacetKind | null;
+  /** The operator's own word, quoted rather than translated. */
+  readonly label: string;
+  readonly count: number | null;
+  readonly active: boolean;
+}
+
+/**
+ * The verdict on "did the seller filter we asked for actually run".
+ *
+ * Three outcomes and not two: a strip that contradicts the request is a
+ * different fact from a strip nobody could find, and only the first one is
+ * evidence about the operator. Both cost the stamp — a claim we cannot back is
+ * not a claim this project makes — but they are reported apart, because the
+ * first means the parameter stopped working and the second means the markup
+ * moved, and those get fixed in different places.
+ */
+export type QuokaSellerFilterCheck =
+  | { readonly kind: 'confirmed'; readonly label: string }
+  | { readonly kind: 'contradicted'; readonly detail: string }
+  | { readonly kind: 'unverifiable'; readonly detail: string };
+
+/** Quoka's own words for the three sides. Its labels, not ours. */
+const QUOKA_FACET_LABEL: Readonly<Record<string, QuokaFacetKind>> = {
+  alle: 'all',
+  privat: 'private',
+  gewerblich: 'commercial',
+};
+
+/** What a `SellerType` in the query means on this source's strip. */
+function facetForSellerType(sellerType: SellerType): QuokaFacetKind {
+  return sellerType === 'private' ? 'private' : sellerType === 'commercial' ? 'commercial' : 'all';
+}
+
+/**
+ * The three entries of the seller-type strip, as the page renders them.
+ *
+ * The label is read by subtracting the count from the entry's text: the markup
+ * is `Privat<br><span class="lf-count">1148</span>`, so `textContent` is
+ * "Privat1148" and taking it whole would match nothing.
+ */
+export function parseQuokaUserTypeFacets(scope: HtmlElement): QuokaUserTypeFacet[] {
+  const facets: QuokaUserTypeFacet[] = [];
+  for (const entry of queryAll(scope, QUOKA_SRP.userTypeFilter)) {
+    const countText = textOf(entry, QUOKA_SRP.userTypeCount);
+    const whole = text(entry);
+    const label = (countText && whole.endsWith(countText) ? whole.slice(0, -countText.length) : whole).trim();
+    const count = /^\d+$/.test(countText) ? Number.parseInt(countText, 10) : null;
+    facets.push({
+      kind: QUOKA_FACET_LABEL[label.toLowerCase()] ?? null,
+      label,
+      count,
+      active: (attr(entry, 'class') ?? '').split(/\s+/).includes(QUOKA_SRP.userTypeActive),
+    });
+  }
+  return facets;
+}
+
+/**
+ * The canary for the seller-type stamp — two independent locks, no extra request.
+ *
+ * The stamp says "every row here is private" on the strength of a URL parameter,
+ * and the source record has said since 2026-08-21 that this "is only true while
+ * the operator honours the parameter: were it ignored, resultscount would stay
+ * at its unfiltered value and the stamp would be set anyway". That is the
+ * project's own signature failure — green, and it checked nothing — sitting in a
+ * field a user filters on.
+ *
+ * The strip settles it, and it settles it better than the count comparison that
+ * record proposed, because it is a statement rather than an inference:
+ *
+ *  1. **The active entry must be the side we asked for.** If we sent
+ *     `commercial=false` and Quoka marks "Alle" as active, the parameter did
+ *     nothing and every row on the page is a mixture.
+ *  2. **`resultscount` must equal the active entry's own count.** This catches
+ *     the case the first lock cannot: a page that marks "Privat" active and then
+ *     serves the unfiltered row set anyway.
+ *
+ * A missing or unrecognisable strip is `unverifiable`, not `confirmed`. The
+ * whole point is that an unverified stamp reads exactly like a verified one.
+ */
+export function checkQuokaSellerFilter(
+  facets: readonly QuokaUserTypeFacet[],
+  sellerType: SellerType,
+  totalEstimate: number | null,
+): QuokaSellerFilterCheck {
+  const wanted = facetForSellerType(sellerType);
+
+  if (facets.length === 0) {
+    return {
+      kind: 'unverifiable',
+      detail: 'die Anbietertyp-Auswahl war auf der Seite nicht zu finden',
+    };
+  }
+  const active = facets.find((f) => f.active);
+  if (!active) {
+    return { kind: 'unverifiable', detail: 'keine der Anbietertyp-Auswahlen war als aktiv markiert' };
+  }
+  if (active.kind === null) {
+    return {
+      kind: 'unverifiable',
+      detail: `die aktive Anbietertyp-Auswahl hieß „${active.label}" — das ist keine der drei bekannten`,
+    };
+  }
+  if (active.kind !== wanted) {
+    const asked = facets.find((f) => f.kind === wanted)?.label ?? wanted;
+    return {
+      kind: 'contradicted',
+      detail: `angefragt war „${asked}", aktiv war aber „${active.label}"`,
+    };
+  }
+  if (totalEstimate !== null && active.count !== null && totalEstimate !== active.count) {
+    return {
+      kind: 'contradicted',
+      detail:
+        `„${active.label}" war aktiv, aber resultscount (${totalEstimate}) und die Zahl an der ` +
+        `Auswahl (${active.count}) widersprechen sich`,
+    };
+  }
+  return { kind: 'confirmed', label: active.label };
 }
 
 /**
@@ -380,13 +522,36 @@ function quokaAdToListing(ad: QuokaRawAd, now: Date, fetchedAt: string, sellerTy
   };
 }
 
-export function parseQuokaSearchPage(html: string, options: QuokaParseOptions): SearchPage {
+export function parseQuokaSearchPage(html: string, options: QuokaParseOptions): QuokaSearchPage {
   const doc = parseHtml(html);
   const warnings: string[] = [];
 
   const totalEstimate = parseQuokaResultCount(html);
   const rows = queryAll(doc, QUOKA_SRP.item);
   const declaredEmpty = totalEstimate === 0 || (totalEstimate === null && html.includes(QUOKA_NO_RESULTS));
+
+  // Before any early return: the strip is on the zero-hit page too (measured
+  // 2026-08-22, all three counts `0` with "Privat" still marked active), and a
+  // caller that gets no verdict cannot tell "not checked" from "fine".
+  const sellerFilter = checkQuokaSellerFilter(
+    parseQuokaUserTypeFacets(doc),
+    options.sellerType,
+    totalEstimate,
+  );
+  // Only stamped when the page confirmed it. `unknown` costs the row a field;
+  // a wrong stamp costs the user a filter they believe in.
+  const stamp: SellerType = sellerFilter.kind === 'confirmed' ? options.sellerType : 'unknown';
+  if (options.sellerType !== 'unknown' && sellerFilter.kind !== 'confirmed') {
+    warnings.push(
+      `Quoka: der Anbietertyp-Filter ist nicht belegt (${sellerFilter.detail}) — ` +
+        'die Zeilen tragen deshalb keinen Anbietertyp.',
+    );
+  }
+  // The mirror case: nothing was asked for and the source narrowed anyway, so
+  // the rows are a subset and `totalEstimate` describes something else.
+  if (options.sellerType === 'unknown' && sellerFilter.kind === 'contradicted') {
+    warnings.push(`Quoka: es wurde kein Anbietertyp angefragt, die Seite meldet aber ${sellerFilter.detail}.`);
+  }
 
   if (totalEstimate === null && rows.length === 0 && !declaredEmpty) {
     throw parseFailed(
@@ -398,7 +563,7 @@ export function parseQuokaSearchPage(html: string, options: QuokaParseOptions): 
     // The zero-hit page keeps six recommendation ads inside `.article-list`,
     // distinguishable only by an empty `data-articleid`. Two independent locks:
     // this branch and the `:not([data-articleid=""])` in the row selector.
-    return { listings: [], seen: 0, totalEstimate: 0, nextUrl: null, warnings };
+    return { listings: [], seen: 0, totalEstimate: 0, nextUrl: null, warnings, sellerFilter };
   }
   if (rows.length === 0) {
     throw parseFailed(
@@ -411,7 +576,7 @@ export function parseQuokaSearchPage(html: string, options: QuokaParseOptions): 
   const listings: Listing[] = [];
   for (const row of rows) {
     const ad = parseQuokaRow(row);
-    if (ad) listings.push(quokaAdToListing(ad, options.now, fetchedAt, options.sellerType));
+    if (ad) listings.push(quokaAdToListing(ad, options.now, fetchedAt, stamp));
   }
   if (listings.length === 0) {
     throw parseFailed(
@@ -423,7 +588,7 @@ export function parseQuokaSearchPage(html: string, options: QuokaParseOptions): 
     warnings.push('Quoka: `resultscount` stand nicht auf der Seite — die Zeilen selbst wurden gelesen.');
   }
 
-  return { listings, seen: rows.length, totalEstimate, nextUrl: quokaNextUrl(doc), warnings };
+  return { listings, seen: rows.length, totalEstimate, nextUrl: quokaNextUrl(doc), warnings, sellerFilter };
 }
 
 /**

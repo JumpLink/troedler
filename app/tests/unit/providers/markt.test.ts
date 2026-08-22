@@ -19,6 +19,7 @@
 
 import { describe, expect, it } from '@gjsify/unit';
 import { MARKETPLACE_TIME_ZONE, ProviderError } from '@troedler/core';
+import { parseHtml } from '@troedler/html';
 import { HttpClient, RateLimiter } from '@troedler/http';
 import {
   MARKT_RADIUS_STEPS,
@@ -34,6 +35,7 @@ import {
   marktScopeFromEnv,
   parseMarktSearchPage,
   parseQuokaSearchPage,
+  parseQuokaUserTypeFacets,
   quokaCategoryFromEnv,
   quokaIdFromUrl,
   quokaPlace,
@@ -282,15 +284,56 @@ function quokaAd(options: QuokaAdOptions): string {
     </div>`;
 }
 
+/** The three sides of the seller strip, in the order the live page prints them. */
+type QuokaFacetLabel = 'Alle' | 'Privat' | 'Gewerblich';
+
+/**
+ * The seller-type strip, structured as measured on 2026-08-22.
+ *
+ * The entry in force is a `<span class="link-filter active">`, the other two are
+ * `<a class="link-filter" href="…commercial=…">`. That difference is the whole
+ * canary, so the fixture reproduces it rather than approximating it — an
+ * `active` class on every entry, or on none, would let a broken check pass.
+ */
+function quokaUserTypeStrip(active: QuokaFacetLabel, counts: Record<QuokaFacetLabel, number>): string {
+  const href: Record<QuokaFacetLabel, string> = {
+    Alle: '/anzeigen/?q=testrad',
+    Privat: '/anzeigen/?q=testrad&amp;commercial=false',
+    Gewerblich: '/anzeigen/?q=testrad&amp;commercial=true',
+  };
+  const entries = (['Alle', 'Privat', 'Gewerblich'] as const).map((label) =>
+    label === active
+      ? `<span class="link-filter active">${label}<br /><span class="lf-count">${counts[label]}</span></span>`
+      : `<a class="link-filter" href="${href[label]}">${label}<br /><span class="lf-count">${counts[label]}</span></a>`,
+  );
+  return `<div class="link-filters user-type-filters">${entries.join('')}</div>`;
+}
+
 function quokaPage(options: {
   count: number | null;
   rows: string;
   next?: string | null;
   noResults?: boolean;
+  /** Which side the strip marks as in force. `null` leaves the strip off the page. */
+  activeFacet?: QuokaFacetLabel | null;
+  /** Overrides the strip's numbers. By default the active side agrees with `count`. */
+  facetCounts?: Partial<Record<QuokaFacetLabel, number>>;
 }): string {
   const next = options.next === undefined ? 'https://www.quoka.de/anzeigen/?q=testrad&pag=2' : options.next;
+  const active = options.activeFacet === undefined ? 'Alle' : options.activeFacet;
+  // The active side's count matches `resultscount` on every live page measured;
+  // the other two are plausible numbers nothing asserts on.
+  const total = options.count ?? 0;
+  const counts: Record<QuokaFacetLabel, number> = {
+    Alle: total,
+    Privat: Math.floor(total / 3),
+    Gewerblich: total - Math.floor(total / 3),
+  };
+  if (active !== null) counts[active] = total;
+  if (options.facetCounts) Object.assign(counts, options.facetCounts);
   return `<!DOCTYPE html><html lang="de"><head><title>Test</title></head><body>
     ${options.noResults ? '<div class="no-result">Für die angegebenen Suchkriterien wurden keine Ergebnisse gefunden</div>' : ''}
+    ${active === null ? '' : quokaUserTypeStrip(active, counts)}
     <div class="searchresult"><div class="article-list">${options.rows}</div></div>
     <ul class="pagination radius">
       <li class="arrow unavailable"><span class="pagination-arrow">&lsaquo;</span></li>
@@ -301,35 +344,41 @@ function quokaPage(options: {
   </body></html>`;
 }
 
-const QUOKA_FULL = quokaPage({
+const QUOKA_FULL_ROWS = [
+  quokaAd({
+    id: 'aaaa1111',
+    title: 'Herrenrad 28 Zoll',
+    price: '2 099 EUR',
+    place: '80801 München, Bayern',
+    date: 'heute 17:52',
+    description: 'Sehr gepflegt. Tel. 0176 1234567, rad@example.org.',
+  }),
+  quokaAd({
+    id: 'bbbb2222',
+    title: 'Sattel',
+    price: '1400.0 EUR',
+    place: '10115 Berlin - Kreuzberg',
+    date: 'gestern 22:35',
+  }),
+  quokaAd({
+    id: 'cccc3333',
+    title: 'Schlauch',
+    price: '8,5 EUR',
+    place: '76133 Karlsruhe - Grötzingen, Baden-Württemberg',
+    date: '21 Juli',
+  }),
+  quokaAd({ id: 'dddd4444', title: 'Fahrradhelm', price: 'zu verschenken', date: '15 Dezember' }),
+  quokaAd({ id: 'eeee5555', title: 'Luftpumpe', price: '29.0 EUR', oldPrice: '30.0 EUR' }),
+  quokaAd({ id: 'ffff6666', title: 'Fahrrad' }),
+].join('');
+
+const QUOKA_FULL = quokaPage({ count: 3521, rows: QUOKA_FULL_ROWS });
+
+/** The same six rows on a page that CONFIRMS `commercial=false` ran. */
+const QUOKA_FULL_PRIVATE = quokaPage({
   count: 3521,
-  rows: [
-    quokaAd({
-      id: 'aaaa1111',
-      title: 'Herrenrad 28 Zoll',
-      price: '2 099 EUR',
-      place: '80801 München, Bayern',
-      date: 'heute 17:52',
-      description: 'Sehr gepflegt. Tel. 0176 1234567, rad@example.org.',
-    }),
-    quokaAd({
-      id: 'bbbb2222',
-      title: 'Sattel',
-      price: '1400.0 EUR',
-      place: '10115 Berlin - Kreuzberg',
-      date: 'gestern 22:35',
-    }),
-    quokaAd({
-      id: 'cccc3333',
-      title: 'Schlauch',
-      price: '8,5 EUR',
-      place: '76133 Karlsruhe - Grötzingen, Baden-Württemberg',
-      date: '21 Juli',
-    }),
-    quokaAd({ id: 'dddd4444', title: 'Fahrradhelm', price: 'zu verschenken', date: '15 Dezember' }),
-    quokaAd({ id: 'eeee5555', title: 'Luftpumpe', price: '29.0 EUR', oldPrice: '30.0 EUR' }),
-    quokaAd({ id: 'ffff6666', title: 'Fahrrad' }),
-  ].join(''),
+  rows: QUOKA_FULL_ROWS,
+  activeFacet: 'Privat',
 });
 
 /** `resultscount = 0` — and six suggestions inside the very same `.article-list`. */
@@ -353,6 +402,35 @@ const QUOKA_MOVED = quokaPage({
   count: 3521,
   rows: [quokaAd({ id: 'aaaa1111', title: 'Herrenrad', articleId: '' })].join(''),
 });
+
+const QUOKA_ROWS = [
+  quokaAd({ id: 'aaaa1111', title: 'Herrenrad 28 Zoll', price: '2 099 EUR' }),
+  quokaAd({ id: 'bbbb2222', title: 'Sattel', price: '60 EUR' }),
+].join('');
+
+/** `commercial=false` honoured: the strip marks Privat, and its count IS `resultscount`. */
+const QUOKA_PRIVATE = quokaPage({ count: 1148, rows: QUOKA_ROWS, activeFacet: 'Privat' });
+
+/**
+ * `commercial=false` sent and ignored: the strip still marks "Alle".
+ *
+ * This is the page the whole canary exists for. Without it, the request said
+ * private, the rows are a mixture, and every one of them would carry
+ * `sellerType: 'private'` — a field a user filters on, wrong, with nothing on
+ * screen to suggest it.
+ */
+const QUOKA_FILTER_IGNORED = quokaPage({ count: 3528, rows: QUOKA_ROWS, activeFacet: 'Alle' });
+
+/** The strip says Privat, the row set is the unfiltered one. Lock two catches it. */
+const QUOKA_FILTER_LIES = quokaPage({
+  count: 3528,
+  rows: QUOKA_ROWS,
+  activeFacet: 'Privat',
+  facetCounts: { Privat: 1148 },
+});
+
+/** The strip is gone — the markup moved, and nothing can be confirmed. */
+const QUOKA_NO_STRIP = quokaPage({ count: 1148, rows: QUOKA_ROWS, activeFacet: null });
 
 // ---------------------------------------------------------------------------
 // Test rig
@@ -842,11 +920,64 @@ export default async () => {
       expect(quokaIdFromUrl('https://www.quoka.de/anzeigen/?q=rad')).toBeNull();
     });
 
-    await it('übernimmt den Anbietertyp aus der Anfrage, nicht aus der Zeile', async () => {
-      const listings = parseQuokaSearchPage(QUOKA_FULL, { now: NOW, sellerType: 'private' }).listings;
-      expect(listings.every((l) => l.sellerType === 'private')).toBe(true);
+    await it('übernimmt den Anbietertyp aus der Anfrage, wenn die Seite ihn bestätigt', async () => {
+      const parsed = parseQuokaSearchPage(QUOKA_PRIVATE, { now: NOW, sellerType: 'private' });
+      expect(parsed.sellerFilter.kind).toBe('confirmed');
+      expect(parsed.listings.every((l) => l.sellerType === 'private')).toBe(true);
       const neutral = parseQuokaSearchPage(QUOKA_FULL, { now: NOW, sellerType: 'unknown' }).listings;
       expect(neutral.every((l) => l.sellerType === 'unknown')).toBe(true);
+    });
+
+    await it('stempelt NICHT, wenn Quoka den Filter ignoriert hat', async () => {
+      // The signature failure of this source: the request said private, the
+      // strip says "Alle", and the old parser stamped `private` on a mixed page
+      // because the stamp came from the URL and nothing ever looked back.
+      const parsed = parseQuokaSearchPage(QUOKA_FILTER_IGNORED, { now: NOW, sellerType: 'private' });
+      expect(parsed.sellerFilter.kind).toBe('contradicted');
+      expect(parsed.listings.length).toBeGreaterThan(0);
+      expect(parsed.listings.every((l) => l.sellerType === 'unknown')).toBe(true);
+      expect(parsed.warnings.some((w) => w.includes('Anbietertyp-Filter ist nicht belegt'))).toBe(true);
+    });
+
+    await it('erkennt eine Seite, die den Filter behauptet und ungefiltert liefert', async () => {
+      // Lock two. The strip marks Privat with 1148, `resultscount` says 3528 —
+      // the row set is the unfiltered one and the marker alone would have
+      // believed the page.
+      const parsed = parseQuokaSearchPage(QUOKA_FILTER_LIES, { now: NOW, sellerType: 'private' });
+      expect(parsed.sellerFilter.kind).toBe('contradicted');
+      expect(parsed.sellerFilter.kind === 'contradicted' && parsed.sellerFilter.detail).toMatch(
+        /widersprechen sich/,
+      );
+      expect(parsed.listings.every((l) => l.sellerType === 'unknown')).toBe(true);
+    });
+
+    await it('stempelt nicht auf gut Glück, wenn der Streifen fehlt', async () => {
+      // "Not checked" must not read like "checked and fine". A markup change
+      // that takes the strip away takes the stamp with it.
+      const parsed = parseQuokaSearchPage(QUOKA_NO_STRIP, { now: NOW, sellerType: 'private' });
+      expect(parsed.sellerFilter.kind).toBe('unverifiable');
+      expect(parsed.listings.every((l) => l.sellerType === 'unknown')).toBe(true);
+    });
+
+    await it('liest den Streifen so, wie die Seite ihn druckt', async () => {
+      const facets = parseQuokaUserTypeFacets(parseHtml(QUOKA_PRIVATE));
+      expect(facets).toHaveLength(3);
+      expect(facets.map((f) => f.label)).toEqualArray(['Alle', 'Privat', 'Gewerblich']);
+      expect(facets.map((f) => f.kind)).toEqualArray(['all', 'private', 'commercial']);
+      // Exactly one entry is in force, and the label is read without its count:
+      // the markup is `Privat<br><span class="lf-count">1148</span>`, so a naive
+      // `textContent` would produce "Privat1148" and match nothing.
+      expect(facets.filter((f) => f.active)).toHaveLength(1);
+      expect(facets.find((f) => f.active)?.kind).toBe('private');
+      expect(facets.find((f) => f.kind === 'private')?.count).toBe(1148);
+    });
+
+    await it('meldet, wenn ohne Anfrage gefiltert wurde', async () => {
+      // The mirror case: nothing was asked for, the source narrowed anyway, so
+      // the rows are a subset and `totalEstimate` counts something else.
+      const parsed = parseQuokaSearchPage(QUOKA_PRIVATE, { now: NOW, sellerType: 'unknown' });
+      expect(parsed.sellerFilter.kind).toBe('contradicted');
+      expect(parsed.warnings.some((w) => w.includes('kein Anbietertyp angefragt'))).toBe(true);
     });
 
     await it('wirft Kontaktdaten weg — auch die verschlüsselte Telefonnummer der Zeile', async () => {
@@ -1051,7 +1182,7 @@ export default async () => {
     await it('sucht, meldet den angewandten Filter und stoppt an der Zeilenzahl', async () => {
       const calls: Call[] = [];
       const provider = createQuokaProvider({
-        http: client({ '/anzeigen/?q=testrad&commercial=false': QUOKA_FULL }, calls),
+        http: client({ '/anzeigen/?q=testrad&commercial=false': QUOKA_FULL_PRIVATE }, calls),
         env: {},
         enabled: true,
         now: () => NOW,
@@ -1069,6 +1200,29 @@ export default async () => {
         'https://www.quoka.de/robots.txt',
         'https://www.quoka.de/anzeigen/?q=testrad&commercial=false',
       ]);
+    });
+
+    await it('meldet den Filter NICHT als angewandt, wenn die Seite ihn nicht trägt', async () => {
+      // Still one request and still six rows — the canary costs nothing and
+      // takes nothing away. What changes is the claim: without `sellerType` in
+      // `applied` the kernel picks the filter up, finds it structurally inert
+      // on this source and prints it under "NICHT angewandt" instead of as a
+      // server-side guarantee nobody gave.
+      const calls: Call[] = [];
+      const provider = createQuokaProvider({
+        http: client({ '/anzeigen/?q=testrad&commercial=false': QUOKA_FULL }, calls),
+        env: {},
+        enabled: true,
+        now: () => NOW,
+      });
+
+      const result = await provider.search({ text: 'testrad', sellerType: 'private', limit: 6 });
+
+      expect(result.requests).toBe(1);
+      expect(result.listings).toHaveLength(6);
+      expect(result.applied).toHaveLength(0);
+      expect(result.listings.every((l) => l.sellerType === 'unknown')).toBe(true);
+      expect(result.warnings.some((w) => w.includes('Anbietertyp-Filter ist nicht belegt'))).toBe(true);
     });
 
     await it('meldet eine leere Antwort als leer, nicht als Fehler und nicht als Empfehlungen', async () => {

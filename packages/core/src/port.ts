@@ -118,6 +118,13 @@ export interface ProviderResult {
    * The source's own count of matches, when it publishes one. Often an
    * estimate — eBay says so explicitly — so never used for arithmetic, only
    * shown.
+   *
+   * One carve-out, inside an adapter and before the number becomes this field:
+   * comparing it for EQUALITY against another count the same page printed is
+   * not arithmetic on an estimate, it is asking whether the page agrees with
+   * itself. Quoka's seller-type canary does exactly that — see
+   * `checkQuokaSellerFilter`. Deriving anything from the number still is not
+   * allowed, here or there.
    */
   readonly totalEstimate: number | null;
   /** How many HTTP requests this cost. Feeds the rate-limit budget and `--explain`. */

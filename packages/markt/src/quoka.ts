@@ -228,6 +228,8 @@ export function createQuokaProvider(deps: MarktDeps): MarketProvider {
       let totalEstimate: number | null = null;
       let requests = 0;
       let more = false;
+      /** Set false by any page whose seller strip did not back the filter. */
+      let sellerFilterBacked = true;
 
       for (let page = 1; page <= maxPages; page += 1) {
         let built: QuokaUrl;
@@ -245,9 +247,21 @@ export function createQuokaProvider(deps: MarktDeps): MarketProvider {
         requests += 1;
 
         const parsed = parseQuokaSearchPage(await res.text(), { now: now(), sellerType: built.sellerType });
+        // Every page is checked, not only the first: the strip is on all of them
+        // (measured 2026-08-22 on page 2 of a filtered search), and a filter that
+        // is honoured on page 1 and dropped on page 3 is exactly the shape of
+        // defect this canary is for. One unconfirmed page disqualifies the claim
+        // for the whole result — `applied` is a statement about the run.
+        if (built.sellerType !== 'unknown' && parsed.sellerFilter.kind !== 'confirmed') {
+          sellerFilterBacked = false;
+        }
         if (page === 1) {
           totalEstimate = parsed.totalEstimate;
           warnings.push(...parsed.warnings);
+        } else {
+          // Later pages contribute only what is new — repeating page 1's notes
+          // per page would turn one fact into five lines of the same sentence.
+          for (const warning of parsed.warnings) if (!warnings.includes(warning)) warnings.push(warning);
         }
 
         for (const listing of parsed.listings) {
@@ -259,6 +273,13 @@ export function createQuokaProvider(deps: MarktDeps): MarketProvider {
         more = parsed.nextUrl !== null;
         if (!more || listings.length >= wanted) break;
       }
+
+      // An unbacked filter is not an applied one. Dropping it here is what makes
+      // the kernel finish the job and `--explain` report it honestly: with every
+      // row's `sellerType` back at `unknown`, `applyPostFilters` finds the filter
+      // structurally inert on this source and prints it under "NICHT angewandt"
+      // instead of under a server-side guarantee.
+      if (!sellerFilterBacked) applied = applied.filter((key) => key !== 'sellerType');
 
       // Everything fetched goes back uncut. `wanted` decided how deep to page;
       // it is not a licence to throw away rows the kernel has not filtered or
