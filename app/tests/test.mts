@@ -8,6 +8,7 @@ import filter from './unit/core/filter.test.ts';
 import merge from './unit/core/merge.test.ts';
 import search from './unit/core/search.test.ts';
 import stats from './unit/core/stats.test.ts';
+import present from './unit/core/present.test.ts';
 
 import robots from './unit/compliance/robots.test.ts';
 import gate from './unit/compliance/gate.test.ts';
@@ -35,6 +36,7 @@ run({
   merge,
   search,
   stats,
+  present,
   robots,
   gate,
   ratelimit,

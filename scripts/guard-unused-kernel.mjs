@@ -89,7 +89,24 @@ for (const base of CONSUMERS) {
   }
 }
 
-const mentions = (file, name) => new RegExp(`\\b${name}\\b`).test(file.text);
+/**
+ * Comments are prose, and prose is not a caller.
+ *
+ * Measured 2026-08-22: `until()` in `present.ts` passed this guard while having
+ * no caller at all, because ten files elsewhere use the English word "until" in
+ * a sentence — "a bug until proven otherwise", "serve until the client goes
+ * away". A guard that a common word defeats is worse than none: it reports
+ * green on exactly the case it exists to catch. Strings are left in, because a
+ * name inside a string is usually a real reference (a registry key, a message
+ * naming the function) and stripping them would trade this false negative for a
+ * false positive.
+ */
+const withoutComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/.*$/gm, ' ');
+
+const mentions = (file, name) => {
+  file.code ??= withoutComments(file.text);
+  return new RegExp(`\\b${name}\\b`).test(file.code);
+};
 
 for (let changed = true; changed; ) {
   changed = false;

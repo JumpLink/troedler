@@ -9,7 +9,7 @@
 
 import type { CommandModule } from 'yargs';
 
-import { fmtMoney, money, type ProviderId, type SearchQuery } from '@troedler/core';
+import { fmtMinor, type ProviderId, type SearchQuery } from '@troedler/core';
 
 import {
   addSearch,
@@ -101,7 +101,7 @@ export const watchCommand: CommandModule = {
           print: (rows) => {
             if (asJson) return printJson(rows);
             for (const r of rows) {
-              const price = r.priceMinor === null ? '—' : fmtMoney(money(r.priceMinor, r.currency ?? 'EUR'));
+              const price = fmtMinor(r.priceMinor, r.currency);
               console.log(`${r.firstSeenAt.slice(0, 10)}  ${price.padStart(12)}  ${r.title}`);
             }
             console.log(`\n${rows.length} Einträge.`);
@@ -168,8 +168,7 @@ export const itemCommand: CommandModule = {
           print: (rows) => {
             if (asJson) return printJson(rows);
             for (const r of rows) {
-              const price =
-                r.lastPriceMinor === null ? '—' : fmtMoney(money(r.lastPriceMinor, r.currency ?? 'EUR'));
+              const price = fmtMinor(r.lastPriceMinor, r.currency);
               console.log(
                 `${r.provider}:${r.listingId}  ${price.padStart(12)}  ${r.goneAt ? '[weg] ' : ''}${r.title}`,
               );
@@ -215,8 +214,8 @@ export const itemCommand: CommandModule = {
               } else if (r.gone) {
                 console.log(`${r.key}: WEG — ${r.title}`);
               } else if (r.changed) {
-                const from = fmtMoney(money(r.previousMinor ?? 0, r.currency ?? 'EUR'));
-                const to = fmtMoney(money(r.currentMinor ?? 0, r.currency ?? 'EUR'));
+                const from = fmtMinor(r.previousMinor ?? 0, r.currency);
+                const to = fmtMinor(r.currentMinor ?? 0, r.currency);
                 console.log(`${r.key}: ${from} → ${to} — ${r.title}`);
               } else {
                 console.log(`${r.key}: unverändert`);

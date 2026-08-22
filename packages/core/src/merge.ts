@@ -63,6 +63,15 @@ export function normalizeGtin(gtin: string | null): string | null {
  * pay (`totalPrice ?? price`). That is deliberate and not an oversight: postage
  * varies per seller, so the same book at 5,50 € from two shops is one product
  * and two offers. Identity must not move when postage does.
+ *
+ * @public-api — exported for its tests, and only for them, which is a decision
+ * rather than an oversight. `groupByIdentity` below is the production caller and
+ * the only one there will be; but the rule this function encodes has exactly one
+ * outcome that grouping cannot show. `null` means "no identity worth trusting",
+ * and through `groupByIdentity` that is indistinguishable from a genuinely
+ * unique item: both are a group of one. A short title plus a price — "Fahrrad,
+ * 50 EUR", which describes thousands of unrelated bicycles — must produce `null`
+ * and not a key, and the only way to assert that is from here.
  */
 export function identityKey(l: Listing): string | null {
   const gtin = normalizeGtin(l.gtin);

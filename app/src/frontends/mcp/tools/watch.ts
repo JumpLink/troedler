@@ -10,7 +10,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { fmtMoney, money, parseListingKey } from '@troedler/core';
+import { fmtMinor, parseListingKey } from '@troedler/core';
 
 import { addSearch, listSearches, removeSearch } from '../../../core/actions/index.ts';
 import type { Context } from '../../../core/context.ts';
@@ -71,7 +71,7 @@ export function registerWatchTools(server: McpServer, context: Context): void {
             key: `${r.provider}:${r.listingId}`,
             title: r.title,
             url: r.url,
-            price: r.priceMinor === null ? null : fmtMoney(money(r.priceMinor, r.currency ?? 'EUR')),
+            price: r.priceMinor === null ? null : fmtMinor(r.priceMinor, r.currency),
             first_seen_at: r.firstSeenAt,
             last_seen_at: r.lastSeenAt,
             gone_at: r.goneAt,
@@ -103,7 +103,7 @@ export function registerWatchTools(server: McpServer, context: Context): void {
           count: rows.length,
           observations: rows.map((r) => ({
             observed_at: r.observedAt,
-            price: fmtMoney(money(r.minor, r.currency)),
+            price: fmtMinor(r.minor, r.currency),
           })),
         });
       } catch (err) {
