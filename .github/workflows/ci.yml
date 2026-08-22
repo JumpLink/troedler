@@ -84,7 +84,10 @@ jobs:
       - name: Guard the apiHost ⟺ access correspondence
         run: node scripts/guard-api-hosts.mjs
 
-      - name: Build the CLI bundle
+      # Both bundles. The GUI is a separate entry point because `import Adw`
+      # becomes a top-level `gi://Adw` — building it here is what keeps that
+      # split from rotting, since nothing else in CI imports a widget.
+      - name: Build the CLI and the app bundle
         run: gjsify workspace troedler-cli build
 
       # Runs on gjs AND node. No network here, and that is deliberate: every provider test works

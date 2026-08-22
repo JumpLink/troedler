@@ -25,6 +25,17 @@ export interface Context {
   /** Opens the database on first use, then reuses it. */
   store(): Store;
   closeStore(): void;
+  /**
+   * Re-read the config file and rebuild the providers from it.
+   *
+   * `config` is a snapshot taken at startup, and `setProviderEnabled` writes the
+   * FILE. A command exits before that matters; a window does not. Without this,
+   * a source switched on in the GUI would show its switch in the new position
+   * and the next search would still use the old value — a surface that agrees
+   * with itself and not with the program, which is the shape of defect this
+   * project spends most of its comments on.
+   */
+  reload(): void;
 }
 
 /**
@@ -42,23 +53,34 @@ export function isEnabled(config: TroedlerConfig, provider: MarketProvider): boo
 
 export function createContext(env: Record<string, string | undefined> = process.env): Context {
   const path = configPath(env);
-  const config = loadConfig(path);
   // 64 rather than the default 40: Discogs needs one search plus one price
   // lookup per release to fill a page, so a source that advertises 57 results
   // spends 58 requests on one host. A cap below the number a provider promises
   // is a promise the tool cannot keep.
   const http = new HttpClient({ version: VERSION, maxRequestsPerHost: 64 });
 
-  const providers = buildProviders({ http, env, config });
+  let config = loadConfig(path);
+  let providers = buildProviders({ http, env, config });
 
   let store: Store | null = null;
   let db: ReturnType<typeof openDatabase> | null = null;
 
   return {
-    config,
+    // Getters rather than fields, so `reload()` is visible to everything that
+    // already holds the context — a view that captured `context.config` once
+    // would otherwise keep the stale snapshot after the switch was flipped.
+    get config() {
+      return config;
+    },
+    get providers() {
+      return providers;
+    },
     configPath: path,
     http,
-    providers,
+    reload() {
+      config = loadConfig(path);
+      providers = buildProviders({ http, env, config });
+    },
     store() {
       if (!store) {
         db = openDatabase(dbPath(env));

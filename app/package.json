@@ -17,10 +17,13 @@
     "format:check": "gjsify format --check .",
     "lint": "gjsify lint .",
     "lint:fix": "gjsify lint --fix .",
-    "build": "gjsify run build:gjs",
+    "build": "gjsify run build:gjs && gjsify run build:app",
     "build:gjs": "gjsify build src/index.ts --app gjs --outfile dist/troedler.gjs.mjs",
+    "build:app": "gjsify build src/frontends/gui/main.ts --app gjs --outfile dist/troedler-app.gjs.mjs",
     "start": "gjsify run dist/troedler.gjs.mjs",
+    "start:app": "gjsify run dist/troedler-app.gjs.mjs",
     "dev": "gjsify run build:gjs && gjsify run start",
+    "dev:app": "gjsify run build:app && gjsify run start:app",
     "test": "gjsify test",
     "test:mcp": "node tests/integration/mcp-gjs-smoke.mjs"
   },
@@ -63,6 +66,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@gjsify/adwaita-app": "0.42.0",
     "@gjsify/cli": "0.42.0",
     "@gjsify/node-globals": "0.42.0",
     "@gjsify/rolldown-native": "0.42.0",

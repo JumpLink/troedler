@@ -21,11 +21,28 @@ import {
   type PriceBand,
   type PriceVerdict,
   type ProviderId,
+  type ProviderReport,
   type SearchOutcome,
   type SearchQuery,
 } from '@troedler/core';
 
 import { selectProviders, type Context } from '../context.ts';
+
+/**
+ * One source's finished work, complete enough to render on its own.
+ *
+ * Handed to `onSource` as it settles, and built by the SAME code that fills the
+ * maps in `SearchResult` — not a second computation that happens to agree. A
+ * surface that draws a panel from this and then redraws it from the returned
+ * result must not be able to see the band change.
+ */
+export interface SourceResult {
+  readonly report: ProviderReport;
+  readonly listings: readonly Listing[];
+  /** `null` unless this source answered `ok` — the kernel bands only what it grouped. */
+  readonly band: PriceBand | null;
+  readonly verdicts: ReadonlyMap<string, PriceVerdict>;
+}
 
 export interface SearchInput extends SearchQuery {
   readonly providers?: readonly ProviderId[];
@@ -34,6 +51,15 @@ export interface SearchInput extends SearchQuery {
   readonly compare?: boolean;
   readonly total?: number;
   readonly signal?: AbortSignal;
+  /**
+   * Announced for every source before any of them is asked, in list order.
+   *
+   * A window lays out one pending panel per source from this, so a result area
+   * can never appear without the explanation that belongs beside it.
+   */
+  readonly onSourceStarted?: (provider: ProviderId, label: string) => void;
+  /** One source's work, as it lands. Completion order, not list order. */
+  readonly onSource?: (result: SourceResult) => void;
 }
 
 export interface SearchResult {
@@ -82,21 +108,38 @@ export async function search(context: Context, input: SearchInput): Promise<Sear
     limit: input.limit,
   };
 
+  const bands = new Map<ProviderId, PriceBand>();
+  const verdicts = new Map<string, PriceVerdict>();
+
   const outcome = await searchAll(providers, query, {
     merge: input.merge,
     group: input.compare,
     totalLimit: clamp(input.total, RESULTS_TOTAL),
     signal: input.signal,
+    onStarted: input.onSourceStarted,
+    // The band is computed HERE and stored into the very maps this function
+    // returns, so the panel a surface paints as a source lands and the panel it
+    // paints from the final result are the same numbers by construction rather
+    // than by two code paths agreeing. The `ok` guard is the kernel's own rule:
+    // only `ok` providers reach `outcome.grouped`, and banding the rest would
+    // print "kein Preisband — zu wenige Angebote" about a source that never
+    // answered at all.
+    onSettled: ({ report, listings }) => {
+      let band: PriceBand | null = null;
+      const mine = new Map<string, PriceVerdict>();
+      if (report.outcome === 'ok') {
+        band = priceBand(listings);
+        bands.set(report.provider, band);
+        const stats = band.kind === 'band' ? band.stats : null;
+        for (const listing of listings) {
+          const verdict = verdictFor(listing, stats);
+          verdicts.set(listing.key, verdict);
+          mine.set(listing.key, verdict);
+        }
+      }
+      input.onSource?.({ report, listings, band, verdicts: mine });
+    },
   });
-
-  const bands = new Map<ProviderId, PriceBand>();
-  const verdicts = new Map<string, PriceVerdict>();
-  for (const [provider, listings] of outcome.grouped) {
-    const band = priceBand(listings);
-    bands.set(provider, band);
-    const stats = band.kind === 'band' ? band.stats : null;
-    for (const listing of listings) verdicts.set(listing.key, verdictFor(listing, stats));
-  }
 
   return {
     outcome,

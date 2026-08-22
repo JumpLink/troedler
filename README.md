@@ -7,10 +7,10 @@ A trödler works the markets, sifting other people's goods for the one thing wor
 that across eBay, classified-ad sites, public-authority auctions and collector marketplaces at
 once, and tells you where a thing is cheap and where it is not.
 
-It is a **command-line tool and an MCP server** today, so you can use it from a shell or from an AI
-assistant. A native GNOME/Adwaita app is planned. It runs on
-[GJS](https://gjs.guide/) via [gjsify](https://github.com/gjsify/gjsify) — TypeScript, no Node
-runtime required.
+It is a **command-line tool, a native GNOME/Adwaita app and an MCP server**, so you can use it from
+a shell, from a window, or from an AI assistant. All three render the same results through the same
+kernel. It runs on [GJS](https://gjs.guide/) via [gjsify](https://github.com/gjsify/gjsify) —
+TypeScript, no Node runtime required.
 
 ```console
 $ troedler search Bandsäge --max-price 400 --seller private --explain
@@ -102,12 +102,28 @@ the program that runs, so it makes exactly the requests a real search would make
 
 ```bash
 gjsify install                              # never npm install — see AGENTS.md
-gjsify workspace troedler-cli build
+gjsify workspace troedler-cli build         # the CLI and the app
 gjsify run app/dist/troedler.gjs.mjs check  # what is configured, what is not
 ```
 
 Credentials go in `.env` (copy `.env.example`) or your shell. Every one is optional: a source
 without its key reports itself unconfigured and is skipped — it never fails a search quietly.
+
+The window:
+
+```bash
+gjsify workspace troedler-cli start:app
+```
+
+Two screens. **Suche** lays out one panel per source *before* asking any of them and settles each
+in place, so a result never appears without the account of where it came from — and a source that
+was skipped, refused or broke never looks like a source with nothing to offer. **Quellen** lists
+every source with its switch; turning on one whose terms forbid automated access puts the
+operator's clause on screen and asks, because that is a decision for a person and the date lands in
+the config.
+
+It is a separate bundle from the CLI on purpose: `troedler search` in a terminal has no business
+loading GTK.
 
 As an MCP server, point your client at:
 
