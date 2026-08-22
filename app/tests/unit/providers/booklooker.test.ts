@@ -57,6 +57,59 @@ const XML_ONE_OFFER = [
   '</ArticleList>',
 ].join('\n');
 
+/**
+ * What `/search` ACTUALLY answers — measured against the live API on 2026-08-22
+ * with a real key, which is the first time anyone could.
+ *
+ * Two encodings, not one: the envelope's `returnValue` is a STRING holding
+ * JSON. The adapter's first real answer was `parse-failed` because it assumed a
+ * string had to be markup — correctly reported, which is the only reason the
+ * gap cost minutes instead of producing plausible nonsense.
+ *
+ * The field names are transcribed, not invented: `Author`, `Title`, `Price`,
+ * `ShippingPrice`, `ISBN`, `New`, `Publisher`, `Edition`, `PicURL`, `Country`,
+ * `Year`, `DetailLinkUrl`, `Offerer`, `ArticleId`, `OffererId`, `RatePositive`,
+ * `Infotext`. Occurrence over 149 rows: `ArticleId` 143, `ISBN` 88, `Year` 125 —
+ * so the absent ones are the normal case, not an edge.
+ */
+const REAL_BOOK = {
+  Author: 'Hesse, Hermann',
+  Title: 'Der Steppenwolf',
+  Price: '17.50',
+  ShippingPrice: '2.90',
+  ISBN: '9783518411049',
+  New: '0',
+  Publisher: 'Suhrkamp',
+  Edition: 'Taschenbuch',
+  PicURL: 'http://images.booklooker.de/cover/isbn/standard/97835/18/41/1049.jpg',
+  Country: 'DE',
+  Year: '2001',
+  DetailLinkUrl: 'https://www.booklooker.de/app/detail.php?id=A02SIk5a01ZZs',
+  Offerer: 'Ein Antiquariat',
+  ArticleId: 'A02SIk5a01ZZs',
+  OffererId: '12345',
+  RatePositive: '99',
+  Infotext: 'Guter Zustand, Rufnummer 0176 1234567 im Text.',
+};
+
+/** An aggregate row: no ArticleId, a `resultnew.php` link, many sellers behind one price. */
+const AGGREGATE_BOOK = {
+  Author: 'Hesse, Hermann',
+  Title: 'Der Steppenwolf (Sammelangebot)',
+  Price: '10.30',
+  ShippingPrice: '0.00',
+  New: '1',
+  Country: 'DE',
+  DetailLinkUrl: 'https://www.booklooker.de/app/resultnew.php?id=2361811528',
+  Offerer: 'verschiedene Anbieter',
+};
+
+/** The real envelope: JSON inside a JSON string. */
+const REAL_ENVELOPE = (books: readonly unknown[]) => ({
+  status: 'OK',
+  returnValue: JSON.stringify({ Book: books }),
+});
+
 const OK = (returnValue: unknown) => ({ status: 'OK', returnValue });
 const NOK = (returnValue: string) => ({ status: 'NOK', returnValue });
 
@@ -285,6 +338,79 @@ export default async () => {
     await it('nimmt auch die Liste in einem Umschlagobjekt an', async () => {
       const { listings } = parseSearchResponse(OK({ articles: [record] }), CTX);
       expect(listings).toHaveLength(1);
+    });
+  });
+
+  await describe('Booklooker: die gemessene Antwort', async () => {
+    await it('parst den doppelt kodierten Umschlag', async () => {
+      // The bug this pins: `returnValue` is a STRING containing JSON, and the
+      // parser assumed a string had to be markup. Every field below travels
+      // through both decodings, so a regression here cannot be silent.
+      const { listings } = parseSearchResponse(REAL_ENVELOPE([REAL_BOOK]), CTX);
+      expect(listings.length).toBe(1);
+      expect(listings[0].title).toBe('Der Steppenwolf');
+      expect(listings[0].price?.minor).toBe(1750);
+      expect(listings[0].shippingCost?.minor).toBe(290);
+      expect(listings[0].totalPrice?.minor).toBe(2040);
+      expect(listings[0].gtin).toBe('9783518411049');
+      expect(listings[0].images.length).toBe(1);
+      expect(listings[0].location.country).toBe('DE');
+    });
+
+    await it('liest den Zustand aus New, ohne eine Note zu erfinden', async () => {
+      // `New: 1` is a statement. `New: 0` says only "not new" — inventing
+      // `used-good` from it would be a grade nobody wrote, and the ranking
+      // would act on it. The fact travels in conditionRaw instead.
+      const used = parseSearchResponse(REAL_ENVELOPE([REAL_BOOK]), CTX).listings[0];
+      expect(used.condition).toBe('unknown');
+      expect(used.conditionRaw).toBe('gebraucht');
+
+      const fresh = parseSearchResponse(REAL_ENVELOPE([{ ...REAL_BOOK, New: '1' }]), CTX).listings[0];
+      expect(fresh.condition).toBe('new');
+      expect(fresh.conditionRaw).toBe('neu');
+    });
+
+    await it('nennt eine Sammelzeile einen Ab-Preis', async () => {
+      // No ArticleId and a `resultnew.php` link: that row is a GROUP of offers,
+      // and its price is the cheapest of them. Calling it a fixed price would
+      // promise something no single seller offers.
+      const [aggregate] = parseSearchResponse(REAL_ENVELOPE([AGGREGATE_BOOK]), CTX).listings;
+      expect(aggregate.priceKind).toBe('from');
+      const [single] = parseSearchResponse(REAL_ENVELOPE([REAL_BOOK]), CTX).listings;
+      expect(single.priceKind).toBe('fixed');
+    });
+
+    await it('wirft die Rufnummer aus dem Infotext', async () => {
+      const [listing] = parseSearchResponse(REAL_ENVELOPE([REAL_BOOK]), CTX).listings;
+      expect(listing.description?.includes('1234567')).toBe(false);
+      expect(listing.description?.includes('Guter Zustand')).toBe(true);
+    });
+
+    await it('speichert nichts über den Anbieter', async () => {
+      // Offerer, OffererId and RatePositive are in every real row. None of them
+      // may reach a Listing — asserted over the whole serialised object, so a
+      // new field cannot smuggle one in.
+      const [listing] = parseSearchResponse(REAL_ENVELOPE([REAL_BOOK]), CTX).listings;
+      const serialised = JSON.stringify(listing);
+      expect(serialised.includes('Ein Antiquariat')).toBe(false);
+      expect(serialised.includes('12345')).toBe(false);
+      expect(serialised.includes('RatePositive')).toBe(false);
+    });
+
+    await it('bleibt bei fehlender ISBN und fehlendem Jahr verwertbar', async () => {
+      // Measured: ISBN on 88 of 149 rows, Year on 125. The absent ones are the
+      // normal case, so a row without them must still be a listing.
+      const sparse = { ...REAL_BOOK };
+      delete (sparse as Record<string, unknown>).ISBN;
+      delete (sparse as Record<string, unknown>).Year;
+      const [listing] = parseSearchResponse(REAL_ENVELOPE([sparse]), CTX).listings;
+      expect(listing.gtin).toBe(null);
+      expect(listing.title).toBe('Der Steppenwolf');
+    });
+
+    await it('meldet einen returnValue, der wie JSON beginnt und keines ist', async () => {
+      const err = thrown(() => parseSearchResponse({ status: 'OK', returnValue: '{kaputt' }, CTX));
+      expect(err.kind).toBe('parse-failed');
     });
   });
 

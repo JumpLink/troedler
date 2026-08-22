@@ -172,8 +172,27 @@ export function recordsFrom(returnValue: unknown): BooklookerRecord[] {
         'Booklooker meldete OK, lieferte aber einen leeren Rumpf. Das ist kein Nullergebnis, sondern eine unbrauchbare Antwort.',
       );
     }
+    // `/search` answers with JSON INSIDE the envelope's string field — measured
+    // 2026-08-22: `{"status":"OK","returnValue":"{\"Book\":[…]}"}`. Two encodings,
+    // and only `/authenticate` uses the string as a plain token. Guessing that a
+    // string had to be markup is what made this adapter report `parse-failed` on
+    // its first real answer — correctly, which is the only reason it was cheap
+    // to find.
+    if (body.startsWith('{') || body.startsWith('[')) {
+      let inner: unknown;
+      try {
+        inner = JSON.parse(body);
+      } catch (error) {
+        fail(
+          `Booklooker lieferte einen returnValue, der wie JSON beginnt, aber keines ist (${
+            error instanceof Error ? error.message : String(error)
+          }).`,
+        );
+      }
+      return recordsFrom(inner);
+    }
     if (!body.includes('<')) {
-      fail(`Booklooker lieferte weder XML noch eine Liste, sondern Text: „${body.slice(0, 80)}…".`);
+      fail(`Booklooker lieferte weder JSON noch XML, sondern Text: „${body.slice(0, 80)}…".`);
     }
     return recordsFromMarkup(body);
   }
@@ -312,9 +331,13 @@ const FIELDS = {
   condition: ['condition', 'zustand'],
   sellerType: ['sellertype', 'anbietertyp'],
   country: ['sellercountry', 'country', 'land'],
-  image: ['imageurl', 'image', 'picture', 'cover', 'thumbnail', 'bild'],
+  image: ['picurl', 'imageurl', 'image', 'picture', 'cover', 'thumbnail', 'bild'],
   listedAt: ['dateofentry', 'date', 'einstelldatum', 'datum'],
-  description: ['comment', 'annotation', 'description', 'beschreibung', 'kommentar', 'bemerkung'],
+  description: ['infotext', 'comment', 'annotation', 'description', 'beschreibung', 'kommentar', 'bemerkung'],
+  /** `1` / `0`. The only condition signal this API sends — see `conditionOf`. */
+  isNew: ['new', 'neu'],
+  /** Present on a single offer, absent on an aggregate row. */
+  articleId: ['articleid', 'article_id'],
 } as const;
 
 function read(rec: BooklookerRecord, names: readonly string[]): string | null {
@@ -413,11 +436,39 @@ function sellerTypeOf(raw: string | null): SellerType {
   return 'unknown';
 }
 
-function conditionOf(raw: string | null): Condition {
-  // booklooker's condition is German free text written by the seller
-  // ("gut", "wie neu", "Gebrauchsspuren") — exactly what the shared German
-  // mapper is for. No second table here.
+/**
+ * Condition, from the only two signals this API actually sends.
+ *
+ * Measured over 149 real rows: there is no free-text condition field at all —
+ * `Edition` carries the binding ("Taschenbuch", "Leinen"), not the state. What
+ * there is, on every row, is `New`: `1` on 51 of them, `0` on 98.
+ *
+ * `1` is a statement and becomes `new`. `0` is NOT: it says the book is not new
+ * and stops there, and `Condition` has no "used, grade unstated" value distinct
+ * from `unknown`. Turning it into `used-good` would invent a grade nobody wrote,
+ * and the ranking would then act on it. So it stays `unknown` and the fact
+ * travels in `conditionRaw`, where a reader sees it and a filter — which keeps
+ * unknown-condition rows by design — does not silently drop half the source.
+ *
+ * The free-text mapper stays for the XML path, which does carry seller wording.
+ */
+function conditionOf(raw: string | null, isNew: string | null): Condition {
+  if (isNew !== null) {
+    const flag = isNew.trim();
+    if (flag === '1') return 'new';
+    if (flag === '0') return 'unknown';
+  }
   return conditionFromGerman(raw);
+}
+
+/** What `conditionRaw` shows when the flag is all there is. */
+function conditionTextOf(raw: string | null, isNew: string | null): string | null {
+  if (raw) return raw;
+  if (isNew === null) return null;
+  const flag = isNew.trim();
+  if (flag === '1') return 'neu';
+  if (flag === '0') return 'gebraucht';
+  return null;
 }
 
 /**
@@ -492,6 +543,13 @@ function toListing(rec: BooklookerRecord, ctx: ParseContext): Listing | null {
 
   const image = absoluteUrl(read(rec, FIELDS.image));
   const id = idOf(rec, url);
+  const isNew = read(rec, FIELDS.isNew);
+
+  // A row WITHOUT an ArticleId is not an offer, it is a group of them: measured,
+  // those carry `Offerer: "verschiedene Anbieter"` and a `resultnew.php` link
+  // instead of `detail.php`. Its price is the cheapest of the group, so calling
+  // it a fixed price would promise something no single seller offers.
+  const aggregate = read(rec, FIELDS.articleId) === null;
 
   return {
     key: listingKey(PROVIDER, id),
@@ -501,11 +559,11 @@ function toListing(rec: BooklookerRecord, ctx: ParseContext): Listing | null {
     description: description ? stripContactDetails(description).slice(0, DESCRIPTION_CHARS.default) : null,
     url,
     price,
-    priceKind: price ? kind : 'unknown',
+    priceKind: price ? (aggregate ? 'from' : kind) : 'unknown',
     shippingCost: shipping,
     totalPrice,
-    condition: conditionOf(read(rec, FIELDS.condition)),
-    conditionRaw: read(rec, FIELDS.condition),
+    condition: conditionOf(read(rec, FIELDS.condition), isNew),
+    conditionRaw: conditionTextOf(read(rec, FIELDS.condition), isNew),
     sellerType: sellerTypeOf(read(rec, FIELDS.sellerType)),
     delivery: DELIVERY,
     location: {

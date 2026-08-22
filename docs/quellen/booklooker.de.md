@@ -217,25 +217,78 @@ Other parameters exist and are deliberately unused: `catID`/`subCatID`, `keyword
 
 ---
 
-## 8. The response — what is measured and what is inferred
+## 8. The response — measured 2026-08-22
 
-**This is the gap.** Nobody on this machine holds a Booklooker API key, so `GET /2.0/search` has
-never been seen returning offers. What is known:
+**The gap is closed.** With a real key, `GET /2.0/search` was called against the live API and the
+answer transcribed. The inference recorded here before was **wrong in the one way that mattered**,
+and the record keeps what it guessed alongside what is true, because the mistake is instructive:
 
-- The OpenAPI spec prints the SUCCESS example as `{status: 'OK', returnValue: ''}` and describes
-  it only as *"eine selbsterklärende Liste mit den gefundenen Artikeln"*.
-- The same spec uses the identical `returnValue: ''` placeholder for `article_list`, where the
-  description **does** say what it is: a plain string, entries separated by `\n`, columns by TAB.
-  So a bulk payload arriving as a *string* inside `returnValue` is this API's normal shape.
-- The `extraFields` table for `search` is written entirely in **XML element notation** —
-  `<AbsentFrom>`, `<AbsentTo>`, `<PaymentList>`, `<Payment>` — and it is the same table the legacy
-  XML interface uses, whose result is *"ein selbsterklärendes XML-Dokument"* with the deep link in
-  `<DetailLinkUrl>`.
-- The official PHP example client prints the search result with `echo`, not `print_r` — the
-  treatment it gives strings, not arrays.
+> *Inferred on 2026-08-21:* "most likely an XML document as a string; possibly a JSON array of
+> records with the same field names."
 
-So: **most likely an XML document as a string; possibly a JSON array of records with the same
-field names.** `parse.ts` handles both and refuses to guess beyond that:
+Neither. It is **JSON inside a JSON string** — two encodings, one nested in the other:
+
+```jsonc
+{ "status": "OK", "returnValue": "{\"Book\":[{\"Author\":\"Hesse, Hermann\", … }]}" }
+```
+
+The envelope is real, `/authenticate` does use `returnValue` as a plain token, and the spec's
+`returnValue: ''` placeholder is why a string looked like it had to be markup. `parse.ts` now
+decodes the string a second time when it starts with `{` or `[`, and recurses.
+
+**How it was found, and why that is the point.** The adapter's first real call reported
+`parse-failed` with the body quoted in the message — not "0 Treffer". A source that reports a
+shape it does not understand costs minutes; one that returns an empty list for the same reason
+costs however long it takes somebody to notice a marketplace has quietly stopped contributing.
+That behaviour was designed in before anyone could test it, and this is the first time it earned
+its keep.
+
+### The fields, transcribed over 149 rows
+
+Query: `title=Steppenwolf&author=Hesse`, 149 records, 159 022 bytes.
+
+| Field | Present | Mapped to | Note |
+|---|---|---|---|
+| `Title` | 149/149 | `title` | |
+| `Author` | 149/149 | `description` (head) | |
+| `Price` | 149/149 | `price` | decimal string, `.` separator |
+| `ShippingPrice` | 149/149 | `shippingCost` | `0.00` on 70 of 149 |
+| `Country` | 149/149 | `location.country` | `DE` 138, `AT` 11 |
+| `DetailLinkUrl` | 149/149 | `url` + id fallback | `detail.php` or `resultnew.php` |
+| `New` | 149/149 | `condition` | `0` on 98, `1` on 51 — see below |
+| `Offerer` | 149/149 | **dropped** | seller name |
+| `Publisher` | 144/149 | `description` | |
+| `ArticleId` | 143/149 | `id` | **absent = aggregate row** |
+| `OffererId` | 143/149 | **dropped** | seller id |
+| `RatePositive` | 143/149 | **dropped** | seller rating |
+| `Infotext` | 131/149 | `description` | run through `stripContactDetails` |
+| `Year` | 125/149 | `description` | sometimes `"1974."`, with the dot |
+| `PicURL` | 120/149 | `images[0]` | |
+| `Edition` | 89/149 | — | binding ("Taschenbuch"), NOT condition |
+| `ISBN` | 88/149 | `gtin` | widened to GTIN-13, check digit verified |
+
+**There is no date field at all**, so `listedAt` is always `null` here. And there is no free-text
+condition: `Edition` is the binding. The only condition signal is `New`.
+
+### Three findings that shaped the adapter
+
+**`New` is a statement in one direction only.** `1` becomes `new`. `0` says the book is not new
+and stops — `Condition` has no "used, grade unstated" value distinct from `unknown`, and inventing
+`used-good` would be a grade nobody wrote, which the ranking would then act on. So `0` maps to
+`unknown` and the fact travels in `conditionRaw` as `"gebraucht"`, where a reader sees it and a
+condition filter — which keeps unknown rows by design — does not silently drop two thirds of this
+source.
+
+**A row without `ArticleId` is not an offer.** Measured: those carry `Offerer: "verschiedene
+Anbieter"` and a `resultnew.php` link instead of `detail.php`. They are a GROUP of offers, and the
+price is the cheapest in it — so they get `priceKind: 'from'`. Calling that a fixed price would
+promise something no single seller offers.
+
+**The row limit is ignored.** `maxResults=3` came back with **149** rows. The cap is therefore
+applied here, and a warning says so, so `--explain` distinguishes "we asked for 5" from "we got
+149 and kept 5".
+
+### What the parser still accepts
 
 | `returnValue` | Result |
 |---|---|
@@ -331,9 +384,14 @@ phone number or e-mail address in a seller's note never reaches the cache. Image
 
 ## 12. Open items
 
-- [ ] **Measure a real `/2.0/search` response** and replace §8's inference with the field names.
-- [ ] Correct the `clause` text in `@troedler/compliance` → `SOURCES`: the search interface is
+- [x] **Measure a real `/2.0/search` response** — done 2026-08-22 with a key; §8 now carries the
+      transcription instead of the guess, and seven tests pin it.
+- [x] Correct the `clause` text in `@troedler/compliance` → `SOURCES`: the search interface is
       50 calls / 10 min, not 100/min (that is the global REST ceiling).
+- [ ] `getListing` is still absent. Now that `ArticleId` is measured as present on 143 of 149 rows
+      and `detail.php?id=<ArticleId>` is the deep link, a by-id lookup may be reachable after all —
+      §10 argued it was not, on the assumption that no stable per-offer handle existed. Worth
+      re-measuring before believing either version.
 - [ ] Re-read the AGB when the BGH decides the scraping revision on **2026-09-03** (5 U 104/24).
       This source does not depend on the outcome — it has an API licence — but the record should
       say when it was last read.

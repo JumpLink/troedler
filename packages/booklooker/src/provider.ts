@@ -173,18 +173,30 @@ export function createBooklookerProvider(deps: BooklookerDeps): MarketProvider {
       currency: 'EUR',
     });
 
+    // The API IGNORES the row limit. Measured 2026-08-22: `maxResults=3` came
+    // back with 149 rows. So the cap is ours to apply, and saying so in a
+    // warning is the difference between "we asked for 5" and "we got 149 and
+    // kept 5" — which is what `--explain` is for.
+    const capped = listings.slice(0, plan.limit);
+    const ignoredLimit =
+      listings.length > plan.limit
+        ? [
+            `Booklooker beachtet die angeforderte Trefferzahl nicht — es kamen ${listings.length} Zeilen für ${plan.limit}. Der Rest wurde hier verworfen.`,
+          ]
+        : [];
+
     return {
       provider: PROVIDER,
-      listings,
+      listings: capped,
       applied: plan.applied,
       // No paging here: a full page IS the ceiling, so anything more the shop
       // holds is out of reach rather than one request away.
-      truncated: listings.length >= plan.limit,
+      truncated: listings.length > capped.length,
       // booklooker publishes no match count, and inventing one from the row
       // count would make `truncated` and `totalEstimate` contradict each other.
       totalEstimate: null,
       requests,
-      warnings: [...plan.warnings, ...warnings],
+      warnings: [...plan.warnings, ...warnings, ...ignoredLimit],
     };
   }
 
