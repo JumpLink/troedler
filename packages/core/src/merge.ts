@@ -77,15 +77,24 @@ export interface ListingGroup {
   readonly identity: string | null;
   readonly listings: readonly Listing[];
   /**
-   * True when one source contributed more than one row to this group.
+   * True when the shared identity is a code the rows happen to share rather
+   * than one product seen more than once.
    *
-   * Then the shared identity is a code the rows happen to share, not one
-   * product seen twice — because the source itself keeps them apart. Measured
-   * on Discogs: barcode `5099996601419` covers the 2009 UK pressing, the 2015
-   * European one and a 2025 tour edition carrying Ralf Hütter's signature. All
-   * three are that barcode; only one of them is 11,18 €.
+   * The test is whether one source contributed several AGGREGATE rows —
+   * `priceKind: 'from'`, i.e. rows that each already stand for many offers of
+   * one catalogue entry. Measured on Discogs: barcode `5099996601419` covers
+   * the 2009 UK pressing, the 2015 European one and a 2025 tour edition
+   * carrying Ralf Hütter's signature. All three are that barcode; only one of
+   * them is 11,18 €.
    *
-   * A group like this may be SHOWN — "three editions under one barcode" is
+   * Several rows from one source is NOT the test on its own, and the first
+   * version of this rule got that wrong: three Booklooker sellers offering the
+   * same ISBN are one product and three offers, and naming the cheapest is
+   * exactly the answer wanted. The difference is whether a row is an offer or a
+   * catalogue entry, and `from` is the marker the data already carries for the
+   * second.
+   *
+   * An ambiguous group may be SHOWN — "three editions under one barcode" is
    * useful — but it must never be collapsed to a single representative row.
    */
   readonly ambiguous: boolean;
@@ -108,11 +117,18 @@ export function groupByIdentity(listings: readonly Listing[]): ListingGroup[] {
     if (bucket) bucket.push(l);
     else groups.set(id, [l]);
   }
-  const grouped = [...groups].map(([identity, ls]) => ({
-    identity,
-    listings: ls,
-    ambiguous: new Set(ls.map((l) => l.provider)).size < ls.length,
-  }));
+  const grouped = [...groups].map(([identity, ls]) => {
+    const aggregatesPerProvider = new Map<ProviderId, number>();
+    for (const l of ls) {
+      if (l.priceKind !== 'from') continue;
+      aggregatesPerProvider.set(l.provider, (aggregatesPerProvider.get(l.provider) ?? 0) + 1);
+    }
+    return {
+      identity,
+      listings: ls,
+      ambiguous: [...aggregatesPerProvider.values()].some((n) => n > 1),
+    };
+  });
   // Groups with something to compare first — that is the question this whole
   // shape exists to answer.
   grouped.sort((a, b) => b.listings.length - a.listings.length);

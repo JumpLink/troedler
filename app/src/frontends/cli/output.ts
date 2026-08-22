@@ -231,16 +231,21 @@ export function renderGroup(
   verdicts: ReadonlyMap<string, PriceVerdict>,
 ): string {
   const sources = new Set(group.listings.map((l) => l.provider));
+  // The identity is only worth naming when it actually joined rows. On a group
+  // of one, "gleicher Titel, gleicher Preis" describes nothing that happened.
   const head =
-    group.identity === null
-      ? 'ohne verlässliche Identität'
+    group.listings.length < 2 || group.identity === null
+      ? null
       : group.identity.startsWith('gtin:')
         ? `GTIN ${group.identity.slice(5)}`
         : 'gleicher Titel, gleicher Preis';
 
   const lines = [
     `${String(index).padStart(3)}. ${style(BOLD, group.listings[0].title)}`,
-    style(DIM, `     ${head} · ${group.listings.length} Angebot(e) auf ${sources.size} Quelle(n)`),
+    style(
+      DIM,
+      `     ${head ? `${head} · ` : ''}${group.listings.length} Angebot(e) auf ${sources.size} Quelle(n)`,
+    ),
   ];
   // `null` for an ambiguous group, and that is the point: naming a cheapest
   // row of a bucket that holds three different pressings answers a question

@@ -190,39 +190,48 @@ export default async () => {
       expect(bestOf(groups[0])?.id).toBe('b');
     });
 
-    await it('marks a group ambiguous when ONE source contributed several rows', async () => {
+    await it('marks a group ambiguous when one source contributed several CATALOGUE rows', async () => {
       // Measured on Discogs: barcode 5099996601419 covers the 2009 UK pressing,
       // the 2015 European one and a 2025 tour edition. All three are that
-      // barcode; only one of them is 11,18 €.
-      const rows = [
+      // barcode; only one of them is 11,18 €. Each Discogs row is an aggregate
+      // over the offers of ONE pressing — `priceKind: 'from'` — so three of them
+      // under a single barcode means the barcode is not the product.
+      const rows = ['2047018', '7000941', '35822047'].map((id, i) =>
         listing({
           provider: 'discogs',
-          id: '2047018',
+          id,
           gtin: '5099996601419',
-          price: money(1720),
+          price: money([1720, 1118, 3100][i]),
           totalPrice: null,
+          priceKind: 'from',
         }),
-        listing({
-          provider: 'discogs',
-          id: '7000941',
-          gtin: '5099996601419',
-          price: money(1118),
-          totalPrice: null,
-        }),
-        listing({
-          provider: 'discogs',
-          id: '35822047',
-          gtin: '5099996601419',
-          price: money(3100),
-          totalPrice: null,
-        }),
-      ];
+      );
       const groups = groupByIdentity(rows);
       expect(groups[0].listings.length).toBe(3);
       expect(groups[0].ambiguous).toBe(true);
       // The discriminator. Before, this answered `11,18 €` for a bucket that
       // holds a 31,00 € signed edition — and a caller would have printed it.
       expect(bestOf(groups[0])).toBe(null);
+    });
+
+    await it('does NOT call several offers of one book ambiguous', async () => {
+      // The counter-case, found by running `--compare` against the live source:
+      // three Booklooker sellers offering the same ISBN are one product and
+      // three offers, and naming the cheapest is exactly the answer wanted.
+      // Keying ambiguity on "several rows from one source" flagged this too.
+      const rows = ['a', 'b', 'c'].map((id, i) =>
+        listing({
+          provider: 'booklooker',
+          id,
+          gtin: '9783638760218',
+          price: money([1795, 1495, 2295][i]),
+          totalPrice: money([1795, 1495, 2295][i]),
+        }),
+      );
+      const groups = groupByIdentity(rows);
+      expect(groups[0].listings.length).toBe(3);
+      expect(groups[0].ambiguous).toBe(false);
+      expect(bestOf(groups[0])?.id).toBe('b');
     });
 
     await it('leaves a row without a trustworthy identity on its own', async () => {
