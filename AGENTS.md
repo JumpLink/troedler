@@ -78,7 +78,7 @@ and an agent string that says what it is.
 | `@troedler/html` | The only façade over HTML parsing and CSS selectors | nothing |
 | `@troedler/<marketplace>` | One `MarketProvider` each | `core`, `http`, `compliance`, `html` |
 | `@troedler/store` | SQLite, XDG paths, config manifest, saved searches, seen index, price history | `core`, `node:*` |
-| `troedler-cli` (`app/`) | yargs CLI, MCP server, later the Adwaita app. Injects the providers | all of the above |
+| `troedler-cli` (`app/`) | yargs CLI, MCP server, the Adwaita app. Injects the providers | all of the above |
 
 **`store` must never import a provider package, and `core` must import nothing.** The fan-out runs
 through the `MarketProvider` port, injected by `app`. That is the only reason the parts with
@@ -137,7 +137,8 @@ next person re-deriving the same guess.
 
 ```bash
 gjsify foreach -A check                     # type-check everything (-A includes private workspaces)
-gjsify workspace troedler-cli build         # → app/dist/troedler.gjs.mjs
+gjsify workspace troedler-cli build         # both bundles
+gjsify workspace troedler-cli build:app     # → app/dist/troedler-app.gjs.mjs (the GUI)
 gjsify workspace troedler-cli test          # @gjsify/unit, on gjs AND node
 gjsify run app/dist/troedler.gjs.mjs check
 ```
@@ -147,7 +148,34 @@ only the app. Tests run on **both** runtimes — a change that makes the Node ru
 the wrong file.
 
 A long-running FOREGROUND GJS process is killed by the werkstatt sandbox (Exit 144). Launch the
-MCP server via **run_in_background** when driving it.
+MCP server or the GUI via **run_in_background**, fully detached
+(`(setsid env … npx gjsify run … >log 2>&1 </dev/null &)`) — and kill it with `pkill -x gjs`,
+never `pkill -f troedler-app`, which matches the launching shell and kills that instead.
+
+## The three surfaces, and the seam under them
+
+CLI, MCP server and the **native GNOME app** are three renderings of the same actions in
+`app/src/core/actions/`. Two rules keep them from drifting, and both have an incident behind them:
+
+- **Every sentence a person could quote comes from `@troedler/core`'s `present.ts`.** A view
+  decides ANSI codes, column widths and Pango classes — nothing else. Before the extraction the
+  provider tri-state already said „an" in one view and „bereit" in another, and „ inkl. Versand"
+  stood three times in one file.
+- **The GUI is its OWN bundle** (`dist/troedler-app.gjs.mjs`), because `import Adw` becomes a
+  top-level `gi://Adw`: folding it into the CLI would make every `troedler search` in a terminal
+  load GTK and fail without a display. Measured after the split — `gi://Adw|gi://Gtk` appears 0×
+  in the CLI bundle and 1× in the app bundle.
+
+The app entry point starts with `import 'dotenv/config'` for the same reason the CLI's does.
+Leaving it out was a real defect: `troedler check` reported Booklooker „bereit" while the window
+beside it said „Kein BOOKLOOKER_API_KEY gesetzt" — same machine, same `.env`.
+
+**Driving it as an agent.** `GJSIFY_DEVTOOLS=1` exports `org.gjsify.Devtools` at
+`/eu/jumplink/Troedler/devtools`; `Screenshot`, `DumpTree`, `FindWidget` and `ActivateWidget` work
+over `gdbus`. The devtools plane cannot type into an entry — `SendKey` takes accelerators — so
+**`TR_APP_QUERY=<begriff>` runs a search at startup**, and `TR_APP_VIEW=suche|quellen` opens a
+view. Without the query hook the only screenshottable state of the search view is the empty one,
+and every state worth checking is on the other side of a query.
 
 ## Fix gjsify gaps at the core
 
