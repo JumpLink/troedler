@@ -84,7 +84,9 @@ addresses are stripped from listing text while parsing. Images are linked, never
 
 Every source has a record under [`docs/quellen/`](docs/quellen/) with its `robots.txt` findings,
 the relevant terms clause, and the date a human last checked. `troedler terms` prints the summary
-and `troedler robots <url>` answers whether a given URL may be fetched and which rule decides.
+and `troedler robots <url>` answers whether troedler would fetch a given URL and what decides it —
+the opt-out list, the switch, robots.txt, or, on an official API, the operator's licence. It reports
+the program that runs, so it makes exactly the requests a real search would make and no others.
 
 | Source | Access | Default | Notes |
 |---|---|---|---|

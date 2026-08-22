@@ -24,6 +24,8 @@ import booklooker from './unit/providers/booklooker.test.ts';
 import auktion from './unit/providers/auktion.test.ts';
 import markt from './unit/providers/markt.test.ts';
 
+import actionRobots from './unit/actions/robots.test.ts';
+
 import mcpGate from './unit/mcp/gate.test.ts';
 import mcpTools from './unit/mcp/tools.test.ts';
 
@@ -45,6 +47,7 @@ run({
   booklooker,
   auktion,
   markt,
+  actionRobots,
   mcpGate,
   mcpTools,
 });
