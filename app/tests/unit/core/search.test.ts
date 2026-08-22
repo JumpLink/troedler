@@ -46,6 +46,8 @@ function fake(
     throws?: Error;
     /** Requests the source spends before it answers — or before it throws. */
     spends?: number;
+    /** Microtask turns to wait before answering, so completion order is controllable. */
+    turns?: number;
     caps?: Partial<ProviderCapabilities>;
   },
 ): MarketProvider {
@@ -60,6 +62,7 @@ function fake(
       return { configured: behaviour.configured ?? true, problem: behaviour.problem ?? null };
     },
     async search(): Promise<ProviderResult> {
+      for (let i = 0; i < (behaviour.turns ?? 0); i += 1) await Promise.resolve();
       // Spent BEFORE the throw, exactly like a real socket: the request went
       // out, the quota is gone, and only then did the remote refuse.
       spent += behaviour.spends ?? 0;
@@ -92,6 +95,53 @@ export default async () => {
       expect(outcome.grouped.get('ebay')?.length).toBe(1);
       expect(outcome.reports.find((r) => r.provider === 'quoka')?.outcome).toBe('failed');
       expect(outcome.reports.find((r) => r.provider === 'quoka')?.errorKind).toBe('unreachable');
+    });
+
+    await it('meldet jede Quelle an, bevor eine antwortet — in der Reihenfolge der Liste', async () => {
+      // A CLI can wait; a window cannot. Eight sources at a two-second-per-host
+      // floor means nothing is observable until the slowest settles, and a pane
+      // that shows nothing is pixel-identical to one that is broken.
+      const started: string[] = [];
+      const settled: string[] = [];
+      const slow = fake('ebay', { turns: 6, result: { listings: [listing({ provider: 'ebay', id: '1' })] } });
+      const quick = fake('quoka', {
+        turns: 0,
+        result: { listings: [listing({ provider: 'quoka', id: '2' })] },
+      });
+
+      const outcome = await searchAll([slow, quick], query, {
+        onStarted: (provider) => started.push(provider),
+        onSettled: (s) => settled.push(s.report.provider),
+      });
+
+      // Announced in declaration order, before any of them answered.
+      expect(started).toEqualArray(['ebay', 'quoka']);
+      // Delivered in COMPLETION order — which is the whole reason the two
+      // callbacks exist separately. If this equalled `started`, the search
+      // would be handing everything over at the end and the panel would still
+      // be blank until then.
+      expect(settled).toEqualArray(['quoka', 'ebay']);
+      // And the return value still carries everything, in the stable order, so
+      // a surface that renders from the callbacks and re-renders from the
+      // result shows the same thing twice.
+      expect(outcome.reports.map((r) => r.provider)).toEqualArray(['ebay', 'quoka']);
+      expect(settled.length).toBe(outcome.reports.length);
+    });
+
+    await it('lässt einen werfenden Rückruf die Suche nicht mitreißen', async () => {
+      // Exactly the rule one provider's failure already follows: a GTK handler
+      // that throws must not reject a fan-out five sources have answered.
+      const ok = fake('ebay', { result: { listings: [listing({ provider: 'ebay', id: '1' })] } });
+      const outcome = await searchAll([ok], query, {
+        onStarted: () => {
+          throw new Error('die View ist explodiert');
+        },
+        onSettled: () => {
+          throw new Error('und noch einmal');
+        },
+      });
+      expect(outcome.grouped.get('ebay')?.length).toBe(1);
+      expect(outcome.reports[0].outcome).toBe('ok');
     });
 
     await it('tells "empty", "skipped" and "failed" apart', async () => {

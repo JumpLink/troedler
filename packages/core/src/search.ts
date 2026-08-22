@@ -92,6 +92,12 @@ export interface SearchOutcome {
   readonly startedAt: string;
 }
 
+/** One provider's finished work, as `onSettled` hands it over. */
+export interface SettledProvider {
+  readonly report: ProviderReport;
+  readonly listings: readonly Listing[];
+}
+
 export interface SearchOptions {
   /** Produce the flat list too. Off by default. */
   readonly merge?: boolean;
@@ -101,6 +107,42 @@ export interface SearchOptions {
   readonly signal?: AbortSignal;
   /** Injected so tests can pin time. */
   readonly now?: () => number;
+  /**
+   * Fired once per provider, in the order the providers were given, before any
+   * of them is asked.
+   *
+   * A CLI can wait: it has scrollback and a prompt that comes back. A window
+   * cannot. Eight sources at a two-second-per-host floor means nothing is
+   * observable until the slowest one settles, and a pane that shows nothing is
+   * pixel-identical to a pane that is broken — this project's own failure mode,
+   * in the one surface with no way to scroll back and check.
+   */
+  readonly onStarted?: (provider: ProviderId, label: string) => void;
+  /**
+   * Fired as each provider settles, in COMPLETION order.
+   *
+   * The reports returned at the end are still the record; this is the same data
+   * arriving earlier. A surface that renders from here and then re-renders from
+   * the return value shows the same thing twice, which is the property that
+   * makes it safe.
+   */
+  readonly onSettled?: (settled: SettledProvider) => void;
+}
+
+/**
+ * Call a surface's callback without letting it break the search.
+ *
+ * Exactly the rule one provider's failure already follows: a GTK handler that
+ * throws must not reject a fan-out that five sources have already answered.
+ * There is nowhere to report it to that is not itself a surface, so it is
+ * swallowed — deliberately, and this comment is the record of that decision.
+ */
+function notify(run: () => void): void {
+  try {
+    run();
+  } catch {
+    /* a view's callback must not fail the search */
+  }
 }
 
 async function runOne(
@@ -210,7 +252,22 @@ export async function searchAll(
   // Concurrent across providers, never within one: the per-host rate limiter in
   // @troedler/http serialises requests to a single marketplace. Different hosts
   // are different budgets, so there is nothing to gain by making them wait.
-  const settled = await Promise.all(providers.map((p) => runOne(p, scoped, options)));
+  //
+  // `onStarted` runs before the first `await` inside the callback, so it fires
+  // for every provider in declaration order while the map is still synchronous —
+  // which is what lets a view lay out one pending panel per source BEFORE any of
+  // them answers. `onSettled` then fires in completion order, and the return
+  // value below still carries everything: a surface that renders from the
+  // callbacks and re-renders from the result shows the same thing twice.
+  const settled = await Promise.all(
+    providers.map(async (p) => {
+      const caps = p.capabilities;
+      if (options.onStarted) notify(() => options.onStarted?.(caps.id, caps.label));
+      const one = await runOne(p, scoped, options);
+      if (options.onSettled) notify(() => options.onSettled?.(one));
+      return one;
+    }),
+  );
 
   // Already filtered, ordered and cut by `applyPostFilters` — either the kernel
   // sorted or the provider did, and re-sorting here would overrule whichever it
