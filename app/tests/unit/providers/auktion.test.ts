@@ -21,7 +21,9 @@ import {
   buildSearchUrl,
   createJustizAuktionProvider,
   createZollAuktionProvider,
+  absoluteEndFrom,
   endsAtFrom,
+  isoOffsetMinutes,
   parseBidAmount,
   parseJustizDetailPage,
   parseRemainingSeconds,
@@ -240,6 +242,20 @@ const ZOLL_DETAIL = `<!DOCTYPE html><html lang="de"><head><title>x</title>
   </section>
 </body></html>`;
 
+/**
+ * The same page with the shipping row as Zoll-Auktion really prints it.
+ *
+ * The DTO, the source record and the only fixture all said this row reads
+ * `Ja` / `Nein`. It was inferred from the `Abholung:` row above it and never
+ * measured. The page prints `Nein` — or a destination with the flat rate, and
+ * `/ja/i` matches neither, so `ships` was permanently false and every lot that
+ * ships was reported as collection-only.
+ */
+const ZOLL_DETAIL_SHIPS = ZOLL_DETAIL.replace(
+  '<dt class="col-4">Versand:</dt><dd class="col-8">Nein</dd>',
+  '<dt class="col-4">Versand:</dt><dd class="col-8">Deutschland (10,00 EUR)</dd>',
+);
+
 // ─── Justiz-Auktion: hand-written pages ───────────────────────────────────
 
 /**
@@ -365,15 +381,61 @@ export default async () => {
     });
 
     await it('rechnet den Countdown gegen die übergebene Uhr, nicht gegen die Ortszeit', async () => {
-      // The reason the absolute date printed next to it is ignored: it carries
-      // no zone, so reading it assumes the process runs on Berlin time.
+      // The countdown path stays for a page without JSON-LD; where the offset
+      // IS readable, `absoluteEndFrom` wins — see the detail tests.
       expect(endsAtFrom('1 Tag 14 Std. 38 Min.', NOW)).toBe('2026-08-23T07:08:00.000Z');
       expect(endsAtFrom('noch 55 Sekunden', NOW)).toBe('2026-08-21T16:30:55.000Z');
       expect(endsAtFrom('beendet', NOW)).toBeNull();
     });
+
+    await it('rundet auf die Körnung, in der der Countdown gedruckt wurde', async () => {
+      // The countdown is FLOORED: measured against the server clock, a page
+      // reading `noch 3 Std. 9 Min.` had 3 h 09 min 49 s left. Taken at face
+      // value the end lands up to a minute early, and our clock is read after
+      // the response, which shifts it again the other way — 21 seconds of
+      // spread across four runs on a value the source keeps constant.
+      const odd = new Date('2026-08-21T16:30:37.000Z');
+      expect(endsAtFrom('37 Minuten', odd)).toBe('2026-08-21T17:08:00.000Z');
+      // Seconds granularity is already exact and must NOT be rounded to a
+      // minute — that would move the value by up to 30 s in the one case where
+      // the source was precise.
+      expect(endsAtFrom('noch 55 Sekunden', odd)).toBe('2026-08-21T16:31:32.000Z');
+    });
+
+    await it('nimmt den Offset aus dem Dokument, statt die Zone zu raten', async () => {
+      expect(isoOffsetMinutes('2026-07-27T09:00:00+02:00')).toBe(120);
+      expect(isoOffsetMinutes('2026-01-27T09:00:00Z')).toBe(0);
+      expect(isoOffsetMinutes('2026-01-27T09:00:00')).toBeNull();
+      // Without an offset there is no answer — and no fallback to the local
+      // clock, which is the assumption this whole path exists to avoid.
+      expect(absoluteEndFrom('So., 23.08.2026 - 09:00 Uhr', null)).toBeNull();
+      expect(absoluteEndFrom('So., 23.08.2026 - 09:00 Uhr', 120)).toBe('2026-08-23T07:00:00.000Z');
+      expect(absoluteEndFrom('So., 23.08.2026 - 09:00 Uhr', 60)).toBe('2026-08-23T08:00:00.000Z');
+      expect(absoluteEndFrom('irgendwas', 120)).toBeNull();
+    });
   });
 
   await describe('auktion: Beträge und Orte', async () => {
+    await it('hält die Entfernung aus dem Ortsnamen heraus und behält sie', async () => {
+      // On a radius search the site appends its own distance to the location:
+      // `60320 Frankfurt am Main (ca. 4 km)`. Left in place it made the city
+      // useless for any cross-provider comparison AND threw away a distance the
+      // source had computed, while `distanceKm` — which exists for exactly this
+      // — stayed null. Nothing is computed here; this reads a printed number.
+      const near = splitGermanLocation('60320 Frankfurt am Main (ca. 4 km)', null);
+      expect(near.postalCode).toBe('60320');
+      expect(near.city).toBe('Frankfurt am Main');
+      expect(near.distanceKm).toBe(4);
+
+      // Without the suffix nothing changes, and no distance is invented.
+      const plain = splitGermanLocation('33334 Gütersloh', 'Deutschland');
+      expect(plain.city).toBe('Gütersloh');
+      expect(plain.distanceKm).toBeNull();
+
+      // A comma decimal, as German pages print it.
+      expect(splitGermanLocation('60320 Frankfurt (ca. 12,5 km)', null).distanceKm).toBe(12.5);
+    });
+
     await it('liest den Tausenderpunkt deutsch, nicht englisch', async () => {
       // 41.840,00 read the English way is 41,84 € — which sorts to the top of a
       // price-ascending search and looks like the bargain of the year.
@@ -583,9 +645,11 @@ export default async () => {
       expect(vw.totalPrice).toBeNull();
 
       expect(bike.delivery).toBe('pickup');
-      // No badge means the office also ships — and § 5 Abs. 1 keeps collection
-      // possible in that case, so "both" rather than "shipping".
-      expect(bahn.delivery).toBe('both');
+      // No badge is NOT a claim. Measured on `n2=uhr`, the operator's own
+      // collection filter returns 1 056 of 1 086 lots, so for 30 of them the
+      // source says collection is impossible — and none of those carries a
+      // badge. `both` asserted collection for exactly those thirty.
+      expect(bahn.delivery).toBe('unknown');
       expect(bike.bidCount).toBe(20);
     });
 
@@ -679,8 +743,32 @@ export default async () => {
         'https://www.zoll-auktion.de/auktion/produkt/1_AMG_E_Bike_U3_Klapprad/971850',
       );
       expect(listing?.listedAt).toBe('2026-07-27T07:00:00.000Z');
-      expect(listing?.endsAt).toBe('2026-08-23T07:08:00.000Z');
+      // `So., 23.08.2026 - 09:00 Uhr` at the +02:00 the JSON-LD carries — the
+      // page's own answer, identical on every run. The countdown in the same
+      // fixture would land on 07:08, and against a live page it drifted across
+      // a 21-second spread on a value the source keeps constant.
+      expect(listing?.endsAt).toBe('2026-08-23T07:00:00.000Z');
       expect(listing?.delivery).toBe('pickup');
+    });
+
+    await it('liest den Versand so, wie die Seite ihn druckt — nicht als Ja/Nein', async () => {
+      // The discriminator: with `/ja/i` this stays `pickup`, which is what it
+      // did for every shipping lot on the live site.
+      const provider = zollProvider({ '/auktion/produkt/x/971850': ZOLL_DETAIL_SHIPS });
+      const listing = await provider.getListing?.('971850');
+      expect(listing?.delivery).toBe('both');
+      // The quoted rate is real money. Dropped, a 100-€ lot plus 10 € postage
+      // ranked below a 105-€ collection-only lot under every price order.
+      expect(listing?.shippingCost?.minor).toBe(1000);
+      expect(listing?.totalPrice?.minor).toBe(42000);
+    });
+
+    await it('macht aus "Nein" keine Versandkosten und keinen Endpreis', async () => {
+      const provider = zollProvider({ '/auktion/produkt/x/971850': ZOLL_DETAIL });
+      const listing = await provider.getListing?.('971850');
+      expect(listing?.shippingCost).toBeNull();
+      // `null`, never 0 — free postage and unknown postage are different facts.
+      expect(listing?.totalPrice).toBeNull();
     });
 
     await it('meldet eine verschwundene Auktion als null, nicht als Fehler', async () => {

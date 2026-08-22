@@ -84,7 +84,17 @@ export function parseRemainingSeconds(raw: string | null | undefined): number | 
  */
 export function endsAtFrom(remaining: string | null | undefined, now: Date): string | null {
   const seconds = parseRemainingSeconds(remaining);
-  return seconds === null ? null : new Date(now.getTime() + seconds * 1000).toISOString();
+  if (seconds === null) return null;
+
+  // Rounded to the countdown's own granularity, not taken at face value. The
+  // countdown is floored and our clock is read after the response came back, so
+  // the raw sum is early by up to one unit and jitters with the latency. Real
+  // auctions end on a whole minute, so snapping to the printed granularity
+  // removes both errors instead of trading one for the other.
+  const grain = remainingGranularitySeconds(remaining) ?? 1;
+  const at = now.getTime() + seconds * 1000;
+  const snapped = Math.round(at / (grain * 1000)) * grain * 1000;
+  return new Date(snapped).toISOString();
 }
 
 /** `"20 Gebote"` → 20, `"1 Gebot"` → 1, `"0 Gebote"` → 0. `null` when unreadable. */
@@ -123,15 +133,88 @@ export function parseBidAmount(raw: string | null | undefined, currency = 'EUR')
  */
 export function splitGermanLocation(raw: string | null | undefined, country: string | null): Location {
   const text = (raw ?? '').trim();
-  const m = text.match(/^(\d{4,5})\s+(.+)$/);
+
+  // On a radius search Zoll-Auktion appends its OWN distance to the location:
+  // `60320 Frankfurt am Main (ca. 4 km)`. Two errors in one when it is left in
+  // place — the city name becomes useless for any cross-provider comparison,
+  // and a distance the source computed lands in the bin while `distanceKm`,
+  // which exists for exactly this, stays null. Still never computed here: this
+  // reads a number the page printed.
+  const near = text.match(/\s*\(\s*(?:ca\.?|rund|etwa)?\s*([\d.,]+)\s*km\s*\)\s*$/i);
+  const withoutDistance = near ? text.slice(0, text.length - near[0].length).trim() : text;
+  const distanceKm = near ? Number.parseFloat(near[1].replace(/\./g, '').replace(',', '.')) : null;
+
+  const m = withoutDistance.match(/^(\d{4,5})\s+(.+)$/);
   return {
     postalCode: m ? m[1] : null,
-    city: m ? m[2].trim() : text || null,
+    city: m ? m[2].trim() : withoutDistance || null,
     country,
-    // Never computed here: neither site publishes a distance, and inventing one
-    // would need a geocoder this project deliberately does not carry.
-    distanceKm: null,
+    distanceKm: distanceKm !== null && Number.isFinite(distanceKm) ? distanceKm : null,
   };
+}
+
+/**
+ * How fine the countdown was printed — the unit of its smallest term, in
+ * seconds.
+ *
+ * The countdown is FLOORED, not rounded: measured against the server clock, a
+ * page reading `noch 3 Std. 9 Min.` had 3 h 09 min 49 s left. Reading it as
+ * exact puts the end up to one whole unit too early, and the network latency
+ * between the render and our `now()` shifts it again in the other direction —
+ * together, 21 seconds of spread across four runs on a value the source keeps
+ * constant.
+ */
+export function remainingGranularitySeconds(raw: string | null | undefined): number | null {
+  const text = (raw ?? '').replace(/\u00A0/g, ' ');
+  let finest: number | null = null;
+  for (const m of text.matchAll(/(\d+)\s*([A-Za-zÄÖÜäöü]+)/g)) {
+    const unit = m[2].toLowerCase();
+    const size = unit.startsWith('sek')
+      ? 1
+      : unit.startsWith('min')
+        ? 60
+        : unit.startsWith('s')
+          ? 3600
+          : unit.startsWith('t')
+            ? 86400
+            : null;
+    if (size !== null && (finest === null || size < finest)) finest = size;
+  }
+  return finest;
+}
+
+/** The UTC offset an ISO 8601 string carries, in minutes. `+02:00` → 120, `Z` → 0. */
+export function isoOffsetMinutes(iso: string | null | undefined): number | null {
+  const m = (iso ?? '').match(/(?:Z|([+-])(\d{2}):?(\d{2}))$/);
+  if (!m) return null;
+  if (!m[1]) return 0;
+  const minutes = Number.parseInt(m[2], 10) * 60 + Number.parseInt(m[3], 10);
+  return m[1] === '-' ? -minutes : minutes;
+}
+
+/**
+ * The absolute end the page prints, made exact by an offset the same page
+ * printed elsewhere.
+ *
+ * `"So., 23.08.2026 - 09:00 Uhr"` carries no zone, which is why this was
+ * previously derived from the countdown instead. But the detail page also
+ * carries `availabilityStarts: 2026-08-15T18:00:00+02:00` in its JSON-LD —
+ * the same wall clock the page prints for the start, once WITH an offset. So
+ * the zone is readable off the document and does not have to be assumed from
+ * the reader's clock. No fallback to the local zone: without the offset this
+ * returns `null` and the caller keeps the countdown.
+ */
+export function absoluteEndFrom(
+  raw: string | null | undefined,
+  offsetMinutes: number | null,
+): string | null {
+  if (offsetMinutes === null) return null;
+  const m = (raw ?? '').match(/(\d{1,2})\.(\d{1,2})\.(\d{4})[^\d]+(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  const [day, month, year, hour, minute] = m.slice(1, 6).map((v) => Number.parseInt(v, 10));
+  if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59) return null;
+  const utc = Date.UTC(year, month - 1, day, hour, minute) - offsetMinutes * 60_000;
+  return new Date(utc).toISOString();
 }
 
 /**

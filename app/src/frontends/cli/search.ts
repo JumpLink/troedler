@@ -150,6 +150,7 @@ export const searchCommand: CommandModule = {
             printJson({
               query: result.outcome.query,
               noSourceAnswered: result.noSourceAnswered,
+              gaps: result.gaps,
               // One band per source, never one across them — see the note on
               // `SearchResult.bands`.
               bands: [...result.bands].map(([provider, band]) => ({ provider, band })),
@@ -161,6 +162,9 @@ export const searchCommand: CommandModule = {
             });
             return;
           }
+
+          // Before the results, not after: it changes what the results MEAN.
+          for (const gap of result.gaps) console.log(`Hinweis: ${gap}\n`);
 
           const listings = allListings(result.outcome);
           if (result.outcome.products) {

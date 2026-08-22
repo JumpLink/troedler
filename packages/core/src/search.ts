@@ -25,11 +25,26 @@ import {
 } from './merge.ts';
 import { ProviderError, type ProviderErrorKind } from './errors.ts';
 import { RESULTS_PER_PROVIDER, RESULTS_TOTAL, clamp } from './limits.ts';
-import { activeFilters, type SearchQuery } from './query.ts';
+import { activeFilters, type SearchQuery, type SortKey } from './query.ts';
 import type { Listing, ProviderId } from './listing.ts';
 import type { MarketProvider } from './port.ts';
 
 export type ProviderOutcome = 'ok' | 'empty' | 'skipped' | 'failed';
+
+/** Whether a row carries the field a given order compares on. */
+function hasSortKey(l: Listing, sort: SortKey): boolean {
+  switch (sort) {
+    case 'price-asc':
+    case 'price-desc':
+      return (l.totalPrice ?? l.price) !== null;
+    case 'newest':
+      return l.listedAt !== null;
+    case 'ending-soonest':
+      return l.priceKind === 'auction' && l.endsAt !== null;
+    default:
+      return true;
+  }
+}
 
 export interface ProviderReport {
   readonly provider: ProviderId;
@@ -221,6 +236,23 @@ export async function searchAll(
         ? sortListings([...mixable.values()].flat(), query.sort)
         : interleaveByProvider(mixable);
     merged = flat.slice(0, total);
+  }
+
+  // A cross-provider sort compares one field, and a source that never fills it
+  // does not take part in that comparison — it lands at the end. Zoll-Auktion
+  // sorts `newest` server-side and prints no date on its result cards, so with
+  // `--merge --sort newest` every one of its rows sinks below a kleinanzeigen
+  // ad from 2020 while `--explain` reports the sort as applied. True, and
+  // useless without this.
+  if (options.merge && query.sort && query.sort !== 'relevance') {
+    for (const { report, listings } of settled) {
+      if (report.outcome !== 'ok' || listings.length === 0) continue;
+      if (listings.some((l) => hasSortKey(l, query.sort as SortKey))) continue;
+      (report.warnings as string[]).push(
+        `${report.label} liefert das Feld nicht, nach dem hier sortiert wird (${query.sort}) — ` +
+          'in der gemischten Liste stehen diese Zeilen deshalb hinten, unabhängig davon, wie gut sie passen.',
+      );
+    }
   }
 
   // Grouping reads across sources, so eBay rows belong in it — the licence

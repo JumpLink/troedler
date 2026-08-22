@@ -187,6 +187,30 @@ export default async () => {
       expect(grouped.products?.[0].listings.length).toBe(2);
     });
 
+    await it('warns when a source cannot take part in the cross-provider order', async () => {
+      // Zoll-Auktion sorts `newest` server-side and prints no date on its result
+      // cards. In a merged list every one of its rows therefore sinks below a
+      // kleinanzeigen ad from 2020, while `--explain` reports the sort as
+      // applied — true, and useless without this being said.
+      const dated = fake('kleinanzeigen', {
+        result: {
+          listings: [listing({ provider: 'kleinanzeigen', id: 'k', listedAt: '2020-01-01T00:00:00Z' })],
+        },
+      });
+      const undated = fake('zoll-auktion', {
+        result: {
+          listings: [listing({ provider: 'zoll-auktion', id: 'z', listedAt: null })],
+          applied: ['sort'],
+        },
+      });
+
+      const outcome = await searchAll([dated, undated], { text: 'x', sort: 'newest' }, { merge: true });
+      const zoll = outcome.reports.find((r) => r.provider === 'zoll-auktion');
+      expect(zoll?.warnings.length).toBe(1);
+      // And the source that CAN take part is not warned about.
+      expect(outcome.reports.find((r) => r.provider === 'kleinanzeigen')?.warnings.length).toBe(0);
+    });
+
     await it('applies a filter the provider did not, and says which side did it', async () => {
       const cheap = listing({ provider: 'ebay', id: 'cheap', price: money(5000), totalPrice: money(5000) });
       const dear = listing({ provider: 'ebay', id: 'dear', price: money(90000), totalPrice: money(90000) });

@@ -73,17 +73,39 @@ function ago(iso: string | null, now = Date.now()): string {
   return `vor ${Math.round(hours / 24)} d`;
 }
 
+/** How long an auction still has. Coarse on purpose — the exact instant is in `--json`. */
+function until(iso: string, now = Date.now()): string {
+  const at = Date.parse(iso);
+  if (!Number.isFinite(at)) return '';
+  const minutes = Math.round((at - now) / 60_000);
+  if (minutes < 0) return 'beendet';
+  if (minutes < 60) return `in ${minutes} min`;
+  if (minutes < 60 * 24) return `in ${Math.round(minutes / 60)} h`;
+  return `in ${Math.round(minutes / (60 * 24))} d`;
+}
+
 export function renderListing(listing: Listing, verdict: PriceVerdict | undefined, index: number): string {
   const price = fmtPriceWithKind(listing.totalPrice ?? listing.price, listing.priceKind);
   // Say so when the printed number already contains postage — otherwise two
   // rows in the same list silently mean different things.
   const shipping = listing.totalPrice !== null ? ' inkl. Versand' : '';
   const where = [listing.location.postalCode, listing.location.city].filter(Boolean).join(' ');
+  // For the one source with real auctions, the end and the number of bids are
+  // the two fields the decision hangs on — and the reading view showed neither.
+  const auction =
+    listing.priceKind === 'auction'
+      ? [
+          listing.endsAt ? `endet ${until(listing.endsAt)}` : '',
+          listing.bidCount !== null ? `${listing.bidCount} Gebot(e)` : '',
+        ]
+      : [];
+
   const facts = [
     CONDITION_LABEL[listing.condition],
     SELLER_TYPE_LABEL[listing.sellerType],
     DELIVERY_LABEL[listing.delivery],
     where,
+    ...auction,
     ago(listing.listedAt),
     verdict && verdict !== 'unknown' ? VERDICT_LABEL[verdict] : '',
   ].filter(Boolean);

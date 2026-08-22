@@ -19,10 +19,12 @@ import {
   PAGE_DEPTH,
   ProviderError,
   RESULTS_PER_PROVIDER,
+  addMoney,
   clamp,
   listingKey,
   type FilterKey,
   type Listing,
+  type Money,
   type MarketProvider,
   type ProviderCapabilities,
   type ProviderResult,
@@ -32,9 +34,11 @@ import {
 } from '@troedler/core';
 import { parseZollDetailPage, parseZollSearchPage } from './parse.ts';
 import {
+  absoluteEndFrom,
   absolutize,
   cleanDescription,
   endsAtFrom,
+  isoOffsetMinutes,
   parseBidAmount,
   parseBidCount,
   splitGermanLocation,
@@ -167,6 +171,36 @@ function largestImage(path: string | null | undefined): string | null {
   return url.replace(/\/(?:t_|galerie_large_|galerie_)?(\d+_[0-9a-f]+)\//, '/galerie_large_$1/');
 }
 
+/**
+ * The `Versand:` row on a detail page.
+ *
+ * The DTO and the source record both said this row reads `Ja` / `Nein`. It was
+ * inferred, never measured, and it is wrong: the page prints `Nein`, or it
+ * prints a destination with the flat rate — `Deutschland (10,00 EUR)`. The old
+ * test `/ja/i` therefore never matched a shipping lot, `ships` was permanently
+ * false, and the `both` and `shipping` branches below were dead code. Every lot
+ * that ships was reported as collection-only, and the search page and the
+ * detail page contradicted each other about the same lot.
+ *
+ * The quoted rate is real money, so it lands in `shippingCost` rather than
+ * being dropped on the old assumption that shipping is only priced after the
+ * hammer falls (§ 5 Abs. 1). A lot at 100 € plus 10 € postage otherwise ranked
+ * as cheaper than a 105 € collection-only lot.
+ *
+ * `ships: null` means the row was absent — not "does not ship".
+ */
+export function parseZollShipping(raw: string | null | undefined): {
+  ships: boolean | null;
+  cost: Money | null;
+} {
+  const text = (raw ?? '').replace(/\u00A0/g, ' ').trim();
+  if (!text) return { ships: null, cost: null };
+  if (/^nein\b/i.test(text)) return { ships: false, cost: null };
+  // Anything else names a destination (`Deutschland`, `EU`) or says `Ja`.
+  const inBrackets = text.match(/\(([^)]*)\)/);
+  return { ships: true, cost: inBrackets ? parseBidAmount(inBrackets[1]) : null };
+}
+
 function toListing(card: ZollCardRaw, now: Date, fetchedAt: string): Listing | null {
   const url = absolutize(HOST, card.path);
   if (!url) return null;
@@ -194,10 +228,14 @@ function toListing(card: ZollCardRaw, now: Date, fetchedAt: string): Listing | n
     conditionRaw: null,
     // Never a person: § 1 Abs. 5 admits only public bodies as sellers.
     sellerType: 'commercial',
-    // The badge is printed only for pickup-only lots. Its absence means the
-    // office also ships, and § 5 Abs. 1 keeps collection possible in that case
-    // too — so "both", not "shipping".
-    delivery: /abholung/i.test(card.deliveryText ?? '') ? 'pickup' : 'both',
+    // The badge is printed only for pickup-only lots — so its PRESENCE is a
+    // fact. Its absence is not: measured on `n2=uhr`, the operator's own
+    // collection filter returns 1 056 of 1 086 lots, so for 30 of them the
+    // source itself says collection is impossible — and none of those 30 carries
+    // a badge. `both` claimed pickup for exactly those. There is no DTO value
+    // for "ships, collection unknown", and `unknown` is the one that claims
+    // nothing while still passing every delivery filter.
+    delivery: /abholung/i.test(card.deliveryText ?? '') ? 'pickup' : 'unknown',
     // The search page never names a country; only the detail page's JSON-LD does.
     location: splitGermanLocation(card.locationText, null),
     listedAt: null,
@@ -222,8 +260,9 @@ function detailUrl(id: string): string {
 }
 
 function detailToListing(raw: ZollDetailRaw, fallbackUrl: string, now: Date, fetchedAt: string): Listing {
-  const pickup = /ja/i.test(raw.pickupText ?? '');
-  const ships = /ja/i.test(raw.shippingText ?? '');
+  const pickup = /^ja\b/i.test((raw.pickupText ?? '').trim());
+  const shipping = parseZollShipping(raw.shippingText);
+  const price = parseBidAmount(raw.priceText);
 
   return {
     key: listingKey(PROVIDER, raw.id),
@@ -232,20 +271,33 @@ function detailToListing(raw: ZollDetailRaw, fallbackUrl: string, now: Date, fet
     title: raw.title,
     description: cleanDescription(raw.description),
     url: absolutize(HOST, raw.path) ?? fallbackUrl,
-    price: parseBidAmount(raw.priceText),
+    price,
     priceKind: 'auction',
-    shippingCost: null,
-    totalPrice: null,
+    shippingCost: shipping.cost,
+    // Only when both are known: `addMoney` returns its first argument unchanged
+    // for a missing second, which would print a bid as if it were the end price.
+    totalPrice: price && shipping.cost ? addMoney(price, shipping.cost) : null,
     condition: 'unknown',
     conditionRaw: null,
     sellerType: 'commercial',
     // Here the page states both facts separately, so unlike the result card
     // there is nothing to infer.
-    delivery: pickup && ships ? 'both' : ships ? 'shipping' : pickup ? 'pickup' : 'unknown',
+    delivery:
+      pickup && shipping.ships
+        ? 'both'
+        : shipping.ships
+          ? 'shipping'
+          : pickup
+            ? 'pickup'
+            : 'unknown',
     location: splitGermanLocation(raw.locationText, raw.country),
     // `availabilityStarts` out of the JSON-LD, which carries a real UTC offset.
     listedAt: raw.startsAtIso ? new Date(raw.startsAtIso).toISOString() : null,
-    endsAt: endsAtFrom(raw.remainingText, now),
+    // The printed end plus the offset the JSON-LD carries — exact, and the same
+    // on every run. The countdown stays as the fallback for a page that lost
+    // its JSON-LD, where a value drifting by seconds beats no value at all.
+    endsAt: absoluteEndFrom(raw.endsAtText, isoOffsetMinutes(raw.startsAtIso)) ??
+      endsAtFrom(raw.remainingText, now),
     bidCount: parseBidCount(raw.bidsText),
     images: raw.imagePaths.map(largestImage).filter((u): u is string => u !== null),
     gtin: null,

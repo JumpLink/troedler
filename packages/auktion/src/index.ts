@@ -14,7 +14,12 @@
  * refuses to, out loud. See the file header of `justiz.ts` for the measurement.
  */
 
-export { createZollAuktionProvider, buildSearchUrl, type ZollSearchUrl } from './zoll.ts';
+export {
+  buildSearchUrl,
+  createZollAuktionProvider,
+  parseZollShipping,
+  type ZollSearchUrl,
+} from './zoll.ts';
 export { createJustizAuktionProvider } from './justiz.ts';
 export {
   parseZollSearchPage,
@@ -23,12 +28,15 @@ export {
   type ZollSearchPage,
 } from './parse.ts';
 export {
+  absoluteEndFrom,
   absolutize,
   cleanDescription,
   endsAtFrom,
+  isoOffsetMinutes,
   parseBidAmount,
   parseBidCount,
   parseRemainingSeconds,
+  remainingGranularitySeconds,
   splitGermanLocation,
   type AuktionDeps,
 } from './shared.ts';

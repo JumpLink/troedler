@@ -50,6 +50,27 @@ export interface SearchQuery {
   readonly limit?: number;
 }
 
+/**
+ * What the query asks for that cannot take effect at all.
+ *
+ * A wish that is silently dropped is worse than one that is refused: measured,
+ * `--zip 60326` without `--radius` returned a lot in Köln, about 190 km away,
+ * and `--explain` printed a dash on both lines because half a radius never
+ * becomes an active filter. Neither the user nor the report said anything.
+ */
+export function queryGaps(q: SearchQuery): string[] {
+  const gaps: string[] = [];
+  if (q.postalCode && q.radiusKm === undefined) {
+    gaps.push(
+      `PLZ ${q.postalCode} ohne Umkreis — eine Umkreissuche braucht beides, die PLZ allein wirkt nicht.`,
+    );
+  }
+  if (q.radiusKm !== undefined && !q.postalCode) {
+    gaps.push(`Umkreis ${q.radiusKm} km ohne PLZ — ohne Mittelpunkt gibt es keinen Umkreis.`);
+  }
+  return gaps;
+}
+
 /** The filters a query actually constrains — the ones a provider must account for. */
 export function activeFilters(q: SearchQuery): FilterKey[] {
   const keys: FilterKey[] = [];

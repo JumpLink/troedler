@@ -169,6 +169,8 @@ export function registerSearchTools(server: McpServer, context: Context): void {
         return mcpSuccess({
           query: params.query,
           no_source_answered: result.noSourceAnswered,
+          /** Parts of the request that cannot take effect — e.g. a postcode with no radius. */
+          query_gaps: result.gaps,
           total: allListings(result.outcome).length,
           groups,
           merged: result.outcome.merged?.map((l) => l.key) ?? null,

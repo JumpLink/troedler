@@ -149,14 +149,33 @@ therefore `10 × PAGE_DEPTH.max` = 50.
 
 Result card, per lot: title (twice — see the trap below), product link, one
 thumbnail, current bid, location as `PLZ Ort`, a pickup-only badge, the
-countdown, the bid count. **No item text and no condition.**
+countdown, the bid count. **No item text and no condition.** On a radius search
+the location also carries the site's own distance: `60320 Frankfurt am Main
+(ca. 4 km)` — read into `Location.distanceKm`, and kept out of the city name.
 
 Detail page, additionally: full `Gegenstandsbeschreibung`, up to a dozen images
-in three size variants, absolute end time, `Abholung: Ja/Nein`,
-`Versand: Ja/Nein`, the offering authority, and a schema.org `Product` JSON-LD
-block whose `offers.availabilityStarts` is the only timestamp on the whole site
-that carries an explicit UTC offset — which is why it, and only it, is read from
-JSON-LD.
+in three size variants, absolute end time, `Abholung: Ja/Nein`, the `Versand`
+row, the offering authority, and a schema.org `Product` JSON-LD block whose
+`offers.availabilityStarts` is the only timestamp on the whole site that carries
+an explicit UTC offset.
+
+**The `Versand` row does not mirror the `Abholung` row, and this file said it
+did.** Measured 2026-08-22 on lots 973479 and 975100: the page prints `Nein`, or
+it prints a destination with the flat rate — `Deutschland (10,00 EUR)`,
+`Deutschland (5,50 EUR)`. The `Ja/Nein` claim here was inferred from the row
+above it and never checked; the adapter's matching `/ja/i` test therefore never
+matched a shipping lot, so **every lot that ships was reported as
+collection-only**, and the search page and the detail page contradicted each
+other about the same lot. The quoted rate is real money and is read into
+`shippingCost`.
+
+**The absolute end is now used, and the countdown is the fallback.** This file
+previously justified the countdown by noting that `Auktionsende` carries no time
+zone — true, but the offset is readable off the same document: the JSON-LD start
+is the same wall clock the page prints, once with `+02:00`. Taking it from the
+countdown instead cost up to 21 seconds of spread across four runs on a value
+the source keeps constant, because the countdown is floored and our clock is
+read after the response arrives.
 
 `Startgebot`, `Auktions-ID`, `Charge` and a view counter are present too and are
 not stored.
@@ -189,18 +208,31 @@ deliberately not carried into the DTO — `Listing` has no seller field, by desi
 survives `.trim()`, breaks a substring match, and looks like a parser that
 "sometimes" fails to find a word.
 
-**The pickup badge is omitted, not negated.** A lot that ships simply has no
-`Lieferinformationen` row. Reading the absence as "unknown" would lose the fact;
-reading it as "shipping only" would lose the pickup option that § 5 Abs. 1 keeps
-open. It maps to `both`.
+**The pickup badge is a fact when present and says nothing when absent.** A lot
+that ships simply has no `Lieferinformationen` row. This file used to read the
+absence as `both`, reasoning that § 5 Abs. 1 keeps collection open — but the
+operator's own filter disagrees: measured 2026-08-22 on `n2=uhr`, 1 086 lots
+total, `n5[]=a` (Abholung) returns 1 056 and `n5[]=1` (Versand DE) returns 210.
+So for **30 lots the source itself says collection is impossible**, and none of
+them carries a badge. `both` asserted collection for exactly those thirty. There
+is no DTO value for "ships, collection unknown", so the absence now maps to
+`unknown`, which claims nothing and still passes every delivery filter. The
+reliable path for this question is the server-side filter, not the card.
 
-**The end time is printed as a countdown, not a deadline.** `Restlaufzeit`
-appears in four spellings — `noch 55 Sekunden`, `noch 23 Std. 40 Min.`,
-`1 Tag 12 Std. 55 Min.`, `2 Tage 17 Std. 3 Min.` — with non-breaking spaces.
-The absolute `Auktionsende` on the detail page carries **no time zone**, so the
-adapter computes `endsAt` from the countdown plus an injected clock and never
-parses the German wall-clock string. On a machine outside Europe/Berlin the
-other route is wrong by the offset, in the one field a bidder acts on.
+**The end time is printed as a countdown AND as a deadline, and the deadline
+wins.** `Restlaufzeit` appears in four spellings — `noch 55 Sekunden`,
+`noch 23 Std. 40 Min.`, `1 Tag 12 Std. 55 Min.`, `2 Tage 17 Std. 3 Min.` — with
+non-breaking spaces. The absolute `Auktionsende` carries no time zone, which is
+why it was ignored; but the JSON-LD `availabilityStarts` on the same page is the
+same wall clock the page prints for the start, once **with** `+02:00`. The
+offset is therefore readable off the document and does not have to be assumed
+from the reader's clock. The detail path now uses the printed deadline plus that
+offset; the countdown remains for a page without JSON-LD, snapped to its own
+granularity because it is floored, not rounded (measured: a page reading `noch
+3 Std. 9 Min.` had 3 h 09 min 49 s left, and reading our clock after the
+response shifts it again — 21 seconds of spread across four runs).
+
+Search cards have no JSON-LD, so their `endsAt` still comes from the countdown.
 
 **Prices use the German thousands dot.** `41.840,00 EUR` read the English way is
 €41.84 — which then sorts to the top of a price-ascending search and looks like

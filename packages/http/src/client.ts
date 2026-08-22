@@ -29,6 +29,18 @@ export interface HttpClientOptions {
   readonly fetchImpl?: typeof fetch;
 }
 
+/**
+ * What is known about a host's robots.txt.
+ *
+ * `absent` and `unreadable` both permit the request, and they are still
+ * different facts: one is the operator saying nothing, the other is us not
+ * having heard. Only a surface that can tell them apart can report honestly.
+ */
+export type RobotsState =
+  | { readonly kind: 'parsed'; readonly robots: Robots }
+  | { readonly kind: 'absent'; readonly robots: null }
+  | { readonly kind: 'unreadable'; readonly robots: null; readonly detail: string };
+
 export interface FetchOptions {
   /** Provider id, for error attribution. */
   readonly provider: string;
@@ -50,7 +62,9 @@ export class HttpClient {
   readonly #maxPerHost: number | null;
   readonly #limiter: RateLimiter;
   readonly #fetch: typeof fetch;
-  readonly #robots = new Map<string, Robots | null>();
+  readonly #robots = new Map<string, RobotsState>();
+  /** The scheme each host was first reached on, so robots.txt is fetched the same way. */
+  readonly #schemes = new Map<string, string>();
 
   constructor(options: HttpClientOptions) {
     this.#version = options.version;
@@ -67,29 +81,52 @@ export class HttpClient {
   /**
    * Load and cache a host's robots.txt for the life of this client.
    *
-   * A 404 means "no restrictions" and is cached as such — re-asking a host that
-   * has no robots.txt on every request would be its own small rudeness. A
-   * failure to reach it at all is treated as "no restrictions" too, because the
-   * alternative — refusing to work when robots.txt is briefly unreachable —
-   * turns a transient network blip into a broken tool.
+   * Three outcomes, not two, and conflating them was a real defect: a host that
+   * publishes no robots.txt genuinely imposes no restriction, while a host whose
+   * robots.txt we could not READ has told us nothing at all. Both used to end up
+   * as `null`, so a single 503 on `/robots.txt` at process start let the whole
+   * run through ungated — and `troedler robots` printed "dieser Host liefert
+   * keine robots.txt", a statement about a file nobody had seen.
+   *
+   * The fail-open itself stays: refusing to work while robots.txt is briefly
+   * unreachable turns a network blip into a broken tool, and this project never
+   * builds a URL a known rule would refuse anyway. What changes is that the
+   * unreadable case is NOT cached — so the next request asks again instead of
+   * inheriting one bad moment — and that the caller can tell the two apart.
    */
   async robotsFor(host: string, signal?: AbortSignal): Promise<Robots | null> {
-    if (this.#robots.has(host)) return this.#robots.get(host) ?? null;
+    return (await this.robotsStateFor(host, signal)).robots;
+  }
 
-    let robots: Robots | null = null;
+  async robotsStateFor(host: string, signal?: AbortSignal): Promise<RobotsState> {
+    const cached = this.#robots.get(host);
+    if (cached) return cached;
+
+    // The host's own scheme, not a hard-coded `https://`. Against a plain-text
+    // listener the old line sent a TLS ClientHello — harmless for the sources
+    // shipped today, and not what the code said it did.
+    const scheme = this.#schemes.get(host) ?? 'https:';
+    let state: RobotsState;
     try {
       const res = await this.#limiter.run(host, { delaySeconds: 0, maxRequests: null }, () =>
-        this.#fetch(`https://${host}/robots.txt`, {
+        this.#fetch(`${scheme}//${host}/robots.txt`, {
           headers: baseHeaders(this.#version),
           signal: signal ?? AbortSignal.timeout(this.#timeoutMs),
         }),
       );
-      if (res.ok) robots = parseRobots(await res.text(), new Date().toISOString());
-    } catch {
-      robots = null;
+      state = res.ok
+        ? { kind: 'parsed', robots: parseRobots(await res.text(), new Date().toISOString()) }
+        : res.status === 404
+          ? { kind: 'absent', robots: null }
+          : { kind: 'unreadable', robots: null, detail: `HTTP ${res.status}` };
+    } catch (err) {
+      state = { kind: 'unreadable', robots: null, detail: err instanceof Error ? err.message : String(err) };
     }
-    this.#robots.set(host, robots);
-    return robots;
+
+    // An unreadable robots.txt is a moment, not a fact about the host. Caching
+    // it would let one 503 disable the gate for the rest of the process.
+    if (state.kind !== 'unreadable') this.#robots.set(host, state);
+    return state;
   }
 
   /**
@@ -104,6 +141,7 @@ export class HttpClient {
   ): Promise<Response> {
     const parsed = new URL(url);
     const host = parsed.host.toLowerCase();
+    if (!this.#schemes.has(host)) this.#schemes.set(host, parsed.protocol);
 
     // The "is this source even switched on" question is answered BEFORE any
     // socket opens, robots.txt included. Loading robots.txt first would mean a

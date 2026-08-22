@@ -13,6 +13,7 @@ import {
   allSourcesUnavailable,
   clamp,
   priceBand,
+  queryGaps,
   searchAll,
   verdictFor,
   type Listing,
@@ -54,6 +55,12 @@ export interface SearchResult {
    * of them means "this thing does not exist second-hand".
    */
   readonly noSourceAnswered: boolean;
+  /**
+   * What the query asked for that cannot take effect — a postcode without a
+   * radius, say. Empty when the query is coherent. Every surface must show it:
+   * a wish that is silently dropped is worse than one that is refused.
+   */
+  readonly gaps: readonly string[];
 }
 
 export async function search(context: Context, input: SearchInput): Promise<SearchResult> {
@@ -90,7 +97,13 @@ export async function search(context: Context, input: SearchInput): Promise<Sear
     for (const listing of listings) verdicts.set(listing.key, verdictFor(listing, stats));
   }
 
-  return { outcome, bands, verdicts, noSourceAnswered: allSourcesUnavailable(outcome) };
+  return {
+    outcome,
+    bands,
+    verdicts,
+    noSourceAnswered: allSourcesUnavailable(outcome),
+    gaps: queryGaps(query),
+  };
 }
 
 /** Flatten an outcome for callers that want one list regardless of grouping. */

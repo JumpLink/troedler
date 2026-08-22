@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@gjsify/unit';
 
-import { activeFilters, applyPostFilters, money } from '@troedler/core';
+import { activeFilters, applyPostFilters, money, queryGaps } from '@troedler/core';
 import type { SearchQuery } from '@troedler/core';
 
 import { listing } from './fixtures.ts';
@@ -18,6 +18,17 @@ export default async () => {
     await it('ignores a radius without a postcode — half a radius is not a filter', async () => {
       expect(activeFilters({ text: 'x', radiusKm: 20 }).includes('radius')).toBe(false);
       expect(activeFilters({ text: 'x', radiusKm: 20, postalCode: '21762' }).includes('radius')).toBe(true);
+    });
+
+    await it('says out loud that half a radius was dropped', async () => {
+      // Ignoring it is right; ignoring it SILENTLY is not. Measured: `--zip
+      // 60326` alone returned a lot in Köln, ~190 km away, and `--explain`
+      // printed a dash on both filter lines because half a radius never becomes
+      // an active filter at all.
+      expect(queryGaps({ text: 'x', postalCode: '60326' }).length).toBe(1);
+      expect(queryGaps({ text: 'x', radiusKm: 50 }).length).toBe(1);
+      expect(queryGaps({ text: 'x', postalCode: '60326', radiusKm: 50 }).length).toBe(0);
+      expect(queryGaps({ text: 'x' }).length).toBe(0);
     });
   });
 

@@ -34,9 +34,20 @@ export const robotsCommand: CommandModule = {
       async () => {
         const context = createContext();
         const parsed = new URL(url);
-        const robots = await context.http.robotsFor(parsed.host.toLowerCase());
-        const verdict = evaluate({ url: parsed, userAgent: 'troedler', robots, enabled: true });
-        return { url, host: parsed.host, ...verdict, robotsPresent: robots !== null };
+        const state = await context.http.robotsStateFor(parsed.host.toLowerCase());
+        const verdict = evaluate({
+          url: parsed,
+          userAgent: 'troedler',
+          robots: state.robots,
+          enabled: true,
+        });
+        return {
+          url,
+          host: parsed.host,
+          ...verdict,
+          robots: state.kind,
+          robotsDetail: state.kind === 'unreadable' ? state.detail : null,
+        };
       },
       {
         print: (v) => {
@@ -44,8 +55,15 @@ export const robotsCommand: CommandModule = {
           console.log(v.allowed ? `erlaubt: ${v.url}` : `VERBOTEN: ${v.url}`);
           if (v.detail) console.log(`  ${v.detail}`);
           console.log(`  Wartezeit zwischen Anfragen an ${v.host}: ${v.delaySeconds} s`);
-          if (!v.robotsPresent)
+          // "no robots.txt" and "could not read robots.txt" both permit the
+          // request and are not the same statement. The second one used to be
+          // printed as the first — a claim about a file nobody had seen.
+          if (v.robots === 'absent')
             console.log('  (dieser Host liefert keine robots.txt — damit gilt keine Einschränkung)');
+          if (v.robots === 'unreadable')
+            console.log(
+              `  ACHTUNG: robots.txt war nicht lesbar (${v.robotsDetail}) — es wurde KEINE Regel geprüft.`,
+            );
         },
       },
     );

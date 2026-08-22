@@ -23,9 +23,12 @@ export interface ZollCardRaw {
   /**
    * `"Nur Abholung möglich!"`, or `null` when the site omits the row.
    *
-   * Omission is meaningful, not missing data: measured 2026-08-21, the badge is
-   * printed exactly for the pickup-only lots and left out for everything the
-   * `n5[]=1` (Versand nach Deutschland) filter returns.
+   * Presence is a fact: the badge is printed exactly for pickup-only lots.
+   * Absence is NOT the complement of it — measured 2026-08-22 on `n2=uhr`, the
+   * operator's own collection filter returns 1 056 of 1 086 lots, so the source
+   * says collection is impossible for 30 of them, and none of those 30 carries
+   * a badge. The earlier reading of absence as "ships AND collects" asserted
+   * collection for exactly those.
    */
   readonly deliveryText: string | null;
   /** Remaining time as printed: `"1 Tag 14 Std. 40 Min."`, `"noch 55 Sekunden"`. */
@@ -45,8 +48,16 @@ export interface ZollDetailRaw {
   /** `"So., 23.08.2026 - 09:00 Uhr"` — kept only as the fallback, see `endsAtFrom`. */
   readonly endsAtText: string | null;
   readonly bidsText: string | null;
-  /** `"Ja"` / `"Nein"` from the Abholung and Versand rows. */
+  /** `"Ja"` / `"Nein"` from the Abholung row. */
   readonly pickupText: string | null;
+  /**
+   * The Versand row, which does NOT mirror the one above.
+   *
+   * `"Nein"`, or a destination with the flat rate: `"Deutschland (10,00 EUR)"`.
+   * This comment used to claim `Ja`/`Nein` here too — inferred from the row
+   * above, never measured, and the adapter's `/ja/i` test matched neither real
+   * form. See `parseZollShipping`.
+   */
   readonly shippingText: string | null;
   /** Item description only — never the Ansprechpartner block, which names a person. */
   readonly description: string | null;
