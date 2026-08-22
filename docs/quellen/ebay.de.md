@@ -91,7 +91,19 @@ Rate-limit reporting uses Developer Analytics `v1_beta.0.1`,
   (`buy.marketplace.insights`) have their own.
 - Token lifetime **7 200 s**. eBay's own instruction: *"applications should store this token in a
   static variable and re-use the token while it is valid."*
-- Keys are free and instant: developer.ebay.com → *Application Keys* → Production keyset.
+- Keys are free, but **not instant on a fresh account** — and the portal's own marketing says
+  otherwise, which is how this record got it wrong first. The registration page advertises
+  *"Membership is free!"* next to *"New accounts include a free access tier"*, and the keyset
+  page describes creating a keyset as a self-service click. Both are true, and neither is the
+  first step. Measured 2026-08-22 on a new registration:
+
+  > Thank you for registering with the eBay Developers Program. We are reviewing your account
+  > information. Access to your new account is pending approval, which takes at least one
+  > business day.
+
+  So the order is: register → **account review, ≥ 1 business day** → then
+  developer.ebay.com → *Application Keys* → Production keyset, which is the instant part.
+  Plan the wait; it is not a failed registration.
 - The **sandbox is useless for search** — documented as returning 0 results. Test the auth flow
   there if you like; search against production.
 
