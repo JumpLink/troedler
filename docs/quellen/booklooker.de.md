@@ -367,8 +367,24 @@ phone number or e-mail address in a seller's note never reaches the cache. Image
   and changes what a link points at; if it is ever wanted it must be opt-in and visible.
 - **No multi-media fan-out.** One search hits one `medium` (`BOOKLOOKER_MEDIUM`, default `book`).
   Searching all five would be five calls out of fifty.
-- **No `getListing`.** The interface has no by-id lookup, and its only per-offer handles are the
-  seller's own running number and the seller id.
+- **No `getListing`** — and this was re-measured on 2026-08-22, because §8 undermined the original
+  reason. `ArticleId` turned out to be present on 143 of 149 rows and `detail.php?id=<ArticleId>`
+  is the deep link, so "no stable per-offer handle" was no longer true. The interfaces answer:
+
+  | Endpoint | GET | POST |
+  |---|---|---|
+  | `/detail`, `/articles` | `INVALID_INTERFACE` | — |
+  | `/article` | `INVALID_REQUEST_METHOD` | `INVALID_REQUEST_METHOD` |
+
+  So `/article` **exists** and accepts neither verb we may use. What is left is PUT and DELETE,
+  which on a seller-facing API means create/update and remove — against an article id belonging to
+  somebody else.
+
+  **That measurement was not taken, deliberately.** Probing a write verb to find out whether it is
+  a read is how you delete a stranger's listing to learn that you could. The conclusion stands on
+  what was measured: the two interfaces that answer a read are `/authenticate` and `/search`, and
+  neither takes an article id. If booklooker ever documents a read endpoint, this is the place to
+  correct — not by trying verbs.
 
 ---
 
@@ -388,10 +404,9 @@ phone number or e-mail address in a seller's note never reaches the cache. Image
       transcription instead of the guess, and seven tests pin it.
 - [x] Correct the `clause` text in `@troedler/compliance` → `SOURCES`: the search interface is
       50 calls / 10 min, not 100/min (that is the global REST ceiling).
-- [ ] `getListing` is still absent. Now that `ArticleId` is measured as present on 143 of 149 rows
-      and `detail.php?id=<ArticleId>` is the deep link, a by-id lookup may be reachable after all —
-      §10 argued it was not, on the assumption that no stable per-offer handle existed. Worth
-      re-measuring before believing either version.
+- [x] `getListing` re-measured 2026-08-22 — see §10. `/article` exists but answers
+      `INVALID_REQUEST_METHOD` to both GET and POST; the remaining verbs are writes on somebody
+      else's listing and were not tried. Stays absent, now for a measured reason.
 - [ ] Re-read the AGB when the BGH decides the scraping revision on **2026-09-03** (5 U 104/24).
       This source does not depend on the outcome — it has an API licence — but the record should
       say when it was last read.
