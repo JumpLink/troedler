@@ -120,6 +120,7 @@ export function createBooklookerProvider(deps: BooklookerDeps): MarketProvider {
       `Freier API-Key im Booklooker-Konto unter „Persönliche Daten → API Key"; ohne BOOKLOOKER_API_KEY bleibt die Quelle stumm. ` +
       `Durchsucht den Medientyp „${settings.medium}" (BOOKLOOKER_MEDIUM) und dabei nur Titel bzw. ISBN — die Schnittstelle verknüpft alle Suchfelder mit UND. ` +
       `Kostenlos sind 50 Suchen je 10 Minuten.`,
+    noCoMingling: false,
   };
 
   async function status(): Promise<ProviderStatus> {
@@ -174,24 +175,23 @@ export function createBooklookerProvider(deps: BooklookerDeps): MarketProvider {
     });
 
     // The API IGNORES the row limit. Measured 2026-08-22: `maxResults=3` came
-    // back with 149 rows. So the cap is ours to apply, and saying so in a
-    // warning is the difference between "we asked for 5" and "we got 149 and
-    // kept 5" — which is what `--explain` is for.
-    const capped = listings.slice(0, plan.limit);
+    // back with 149 rows. Every one of them goes to the kernel, which filters
+    // and sorts before it cuts — so an ignored limit turns into MORE to choose
+    // the cheapest five from, not into 144 rows thrown away unseen.
     const ignoredLimit =
       listings.length > plan.limit
         ? [
-            `Booklooker beachtet die angeforderte Trefferzahl nicht — es kamen ${listings.length} Zeilen für ${plan.limit}. Der Rest wurde hier verworfen.`,
+            `Booklooker beachtet die angeforderte Trefferzahl nicht — es kamen ${listings.length} Zeilen für ${plan.limit}. Ausgewählt wird daraus hier.`,
           ]
         : [];
 
     return {
       provider: PROVIDER,
-      listings: capped,
+      listings,
       applied: plan.applied,
       // No paging here: a full page IS the ceiling, so anything more the shop
       // holds is out of reach rather than one request away.
-      truncated: listings.length > capped.length,
+      truncated: false,
       // booklooker publishes no match count, and inventing one from the row
       // count would make `truncated` and `totalEstimate` contradict each other.
       totalEstimate: null,
@@ -203,5 +203,10 @@ export function createBooklookerProvider(deps: BooklookerDeps): MarketProvider {
   // No `getListing`: the search interface has no by-id lookup, and the only
   // per-offer handles it documents are the seller's own running number and the
   // seller id — one is not unique, the other is a person.
-  return { capabilities, status, search };
+  // Read from the socket layer, not from a counter this factory maintains: the
+  // measured failure was a run that spent a request, burned Booklooker quota,
+  // came back AUTHENTICATION_FAILED — and was booked as "0 Anfragen, 1189 ms".
+  const requestsUsed = (): number => deps.http.requestsUsed(API_HOST);
+
+  return { capabilities, status, search, requestsUsed };
 }

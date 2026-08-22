@@ -6,6 +6,7 @@ import {
   groupByIdentity,
   identityKey,
   interleaveByProvider,
+  normalizeGtin,
   money,
   sortListings,
 } from '@troedler/core';
@@ -146,10 +147,128 @@ export default async () => {
     });
   });
 
+  await describe('normalizeGtin', async () => {
+    await it('reads a padded UPC-A and a bare one as the same barcode', async () => {
+      // Both spellings sit in the SAME Discogs `barcode[]` array. Comparing the
+      // strings made a row match or miss depending on which one that source
+      // printed first — measured on two of five rows of one search.
+      expect(normalizeGtin('0190295272432')).toBe(normalizeGtin('190295272432'));
+      expect(normalizeGtin('5 099996 601419')).toBe('5099996601419');
+      // Not a barcode: too short after stripping. `null`, not a truncated key
+      // that would group unrelated rows.
+      expect(normalizeGtin('00042')).toBe(null);
+      expect(normalizeGtin(null)).toBe(null);
+    });
+  });
+
+  await describe('groupByIdentity', async () => {
+    await it('puts the same product from two sources into one group', async () => {
+      const rows = [
+        // `totalPrice` set explicitly: the fixture defaults it to 289,00 € and
+        // ranking keys on it, so leaving it out would compare two equal totals
+        // and make this pass for the wrong reason.
+        listing({
+          provider: 'ebay',
+          id: 'a',
+          gtin: '0190295272432',
+          price: money(12000),
+          totalPrice: money(12000),
+        }),
+        listing({
+          provider: 'quoka',
+          id: 'b',
+          gtin: '190295272432',
+          price: money(4000),
+          totalPrice: money(4000),
+        }),
+      ];
+      const groups = groupByIdentity(rows);
+      expect(groups.length).toBe(1);
+      expect(groups[0].listings.length).toBe(2);
+      expect(groups[0].ambiguous).toBe(false);
+      // The whole point: cheapest across the sources.
+      expect(bestOf(groups[0])?.id).toBe('b');
+    });
+
+    await it('marks a group ambiguous when ONE source contributed several rows', async () => {
+      // Measured on Discogs: barcode 5099996601419 covers the 2009 UK pressing,
+      // the 2015 European one and a 2025 tour edition. All three are that
+      // barcode; only one of them is 11,18 €.
+      const rows = [
+        listing({
+          provider: 'discogs',
+          id: '2047018',
+          gtin: '5099996601419',
+          price: money(1720),
+          totalPrice: null,
+        }),
+        listing({
+          provider: 'discogs',
+          id: '7000941',
+          gtin: '5099996601419',
+          price: money(1118),
+          totalPrice: null,
+        }),
+        listing({
+          provider: 'discogs',
+          id: '35822047',
+          gtin: '5099996601419',
+          price: money(3100),
+          totalPrice: null,
+        }),
+      ];
+      const groups = groupByIdentity(rows);
+      expect(groups[0].listings.length).toBe(3);
+      expect(groups[0].ambiguous).toBe(true);
+      // The discriminator. Before, this answered `11,18 €` for a bucket that
+      // holds a 31,00 € signed edition — and a caller would have printed it.
+      expect(bestOf(groups[0])).toBe(null);
+    });
+
+    await it('leaves a row without a trustworthy identity on its own', async () => {
+      const rows = [
+        listing({ provider: 'quoka', id: 'a', gtin: null, title: 'Rad', price: money(1000) }),
+        listing({ provider: 'quoka', id: 'b', gtin: null, title: 'Rad', price: money(1000) }),
+      ];
+      // Titles under twelve characters do not identify anything, so these must
+      // NOT merge — that is how two different bicycles become one.
+      const groups = groupByIdentity(rows);
+      expect(groups.length).toBe(2);
+      expect(groups.every((g) => g.identity === null)).toBe(true);
+    });
+
+    await it('does not let postage move a product identity', async () => {
+      // Identity keys on the bare price, ranking on what you pay. The same book
+      // at 10,00 € from two shops is one product and two offers.
+      const rows = [
+        listing({
+          provider: 'booklooker',
+          id: 'a',
+          gtin: null,
+          title: 'Die Elementarteilchen',
+          price: money(1000),
+          totalPrice: money(1300),
+        }),
+        listing({
+          provider: 'quoka',
+          id: 'b',
+          gtin: null,
+          title: 'Die Elementarteilchen',
+          price: money(1000),
+          totalPrice: money(1000),
+        }),
+      ];
+      const groups = groupByIdentity(rows);
+      expect(groups.length).toBe(1);
+      expect(bestOf(groups[0])?.id).toBe('b');
+    });
+  });
+
   await describe('bestOf', async () => {
     await it('prefers cheaper, then better condition', async () => {
       const group = {
         identity: 'gtin:1',
+        ambiguous: false,
         listings: [
           listing({
             provider: 'ebay',
@@ -167,7 +286,7 @@ export default async () => {
           }),
         ],
       };
-      expect(bestOf(group).id).toBe('b');
+      expect(bestOf(group)?.id).toBe('b');
     });
   });
 };

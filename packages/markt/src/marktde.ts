@@ -285,6 +285,7 @@ export function marktCapabilities(): ProviderCapabilities {
     disclaimer:
       'markt.de: Anzeigeninhalte dürfen laut Nutzungsbedingungen nicht kopiert, verändert oder verbreitet werden — die Treffer sind nur zum Ansehen da.',
     note: `Aus. Die Nutzungsbedingungen von markt.de verbieten den automatisierten Abruf: „Das automatische Auslesen oder Sammeln von Inhalten auf markt.de (z. B. durch Crawler, Spider oder Scraper) ist ohne ausdrückliche schriftliche Erlaubnis verboten." Die robots.txt erlaubt die Suchpfade zwar (geprüft 2026-08-21), das ersetzt die schriftliche Erlaubnis aber nicht. Wer die Quelle einschaltet, ruft sie vom eigenen Rechner und auf eigene Verantwortung ab — siehe ${MARKT_TERMS_DOC}.`,
+    noCoMingling: false,
   };
 }
 
@@ -293,6 +294,15 @@ export function createMarktDeProvider(deps: MarktDeps): MarketProvider {
 
   return {
     capabilities: marktCapabilities(),
+
+    /**
+     * Requests spent against this host in this process.
+     *
+     * Read from the socket layer, not from a counter this adapter maintains —
+     * a `catch` path that forgets to book its requests is exactly how a failed
+     * search reported "0 Anfragen, 1189 ms".
+     */
+    requestsUsed: () => deps.http.requestsUsed(MARKT_HOST),
 
     async status(): Promise<ProviderStatus> {
       if (!deps.enabled) {
@@ -377,13 +387,15 @@ export function createMarktDeProvider(deps: MarktDeps): MarketProvider {
         );
       }
 
-      const kept = listings.slice(0, wanted);
+      // Everything fetched goes back uncut. `wanted` decided how deep to page;
+      // it is not a licence to throw away rows the kernel has not filtered or
+      // sorted yet — that is how "the five cheapest" became "the five newest,
+      // reordered" and a filtered-away page became the word `empty`.
       return {
         provider: PROVIDER,
-        listings: kept,
+        listings,
         applied,
-        truncated:
-          more || listings.length > wanted || (totalEstimate !== null && totalEstimate > kept.length),
+        truncated: more || (totalEstimate !== null && totalEstimate > listings.length),
         totalEstimate,
         requests,
         warnings,

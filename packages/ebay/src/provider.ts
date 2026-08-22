@@ -72,6 +72,10 @@ const CAPABILITIES: ProviderCapabilities = {
   disclaimer:
     'Angebotsdaten von eBay, abgerufen über die eBay Browse API. Die eBay-API-Lizenz verlangt, dass sie getrennt von Nicht-eBay-Inhalten dargestellt werden und höchstens sechs Stunden alt sind.',
   note: 'Braucht EBAY_CLIENT_ID und EBAY_CLIENT_SECRET (kostenloses Production-Keyset auf developer.ebay.com). Vor dem ersten Production-Call müssen die Marketplace-Account-Deletion-Benachrichtigungen abonniert oder abgewählt werden — troedler speichert keine eBay-Nutzerdaten, deshalb ist Abwählen hier das Richtige.',
+  // eBay API Licence 4.2: eBay listings shown alongside others must be
+  // "visually isolated from third-party listings". The kernel keeps these
+  // rows out of the interleaved `--merge` list; `grouped` still has them.
+  noCoMingling: true,
 };
 
 /** The Browse-search budget out of the analytics answer, ignoring `getItems`. */
@@ -142,6 +146,17 @@ class EbayProvider implements MarketProvider {
             now: this.#now,
           })
         : null;
+  }
+
+  /**
+   * Requests spent against this host in this process.
+   *
+   * Read from the socket layer, not from a counter this adapter maintains —
+   * a `catch` path that forgets to book its requests is exactly how a failed
+   * search reported "0 Anfragen, 1189 ms".
+   */
+  requestsUsed(): number {
+    return this.#deps.http.requestsUsed(allowedHost(this.#deps.env.EBAY_API_HOST));
   }
 
   /**

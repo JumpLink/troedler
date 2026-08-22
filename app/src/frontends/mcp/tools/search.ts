@@ -85,7 +85,19 @@ export function registerSearchTools(server: McpServer, context: Context): void {
         merge: z
           .boolean()
           .optional()
-          .describe('Also return one interleaved list across marketplaces (default false)'),
+          .describe(
+            'Also return one interleaved list across marketplaces (default false). Sources whose ' +
+              'licence forbids co-mingling are named in `merge_excluded` and stay out of it — their ' +
+              'rows are still in `groups`.',
+          ),
+        compare: z
+          .boolean()
+          .optional()
+          .describe(
+            'Also group the rows by PRODUCT across sources (default false) — "what does this thing ' +
+              'cost where". A group flagged `ambiguous` shares an identifier but not an item (one ' +
+              'barcode, several editions) and has no single price.',
+          ),
       },
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
@@ -109,51 +121,86 @@ export function registerSearchTools(server: McpServer, context: Context): void {
           limit: params.limit,
           total: params.total,
           merge: params.merge ?? false,
+          compare: params.compare ?? false,
         });
 
-        const groups = [...result.outcome.grouped].map(([provider, listings]) => ({
-          provider,
-          count: listings.length,
-          listings: listings.map((l) => ({
-            key: l.key,
-            title: l.title,
-            price: fmtMoney(l.totalPrice ?? l.price),
-            price_kind: l.priceKind,
-            condition: l.condition,
-            seller_type: l.sellerType,
-            delivery: l.delivery,
-            location: [l.location.postalCode, l.location.city].filter(Boolean).join(' '),
-            listed_at: l.listedAt,
-            ends_at: l.endsAt,
-            url: l.url,
-            verdict: result.verdicts.get(l.key),
-          })),
-        }));
+        const groups = [...result.outcome.grouped].map(([provider, listings]) => {
+          const band = result.bands.get(provider);
+          return {
+            provider,
+            count: listings.length,
+            // One band per source. Across sources the numbers are not the same
+            // kind of thing — an aggregate minimum, an asking price and a live
+            // bid — so a single band would be arithmetic on incomparables.
+            price_band:
+              band?.kind === 'band'
+                ? {
+                    count: band.stats.count,
+                    considered: band.stats.considered,
+                    basis: band.stats.basis,
+                    shipping_included: band.stats.shippingIncluded,
+                    min: fmtMoney(band.stats.min),
+                    p25: fmtMoney(band.stats.p25),
+                    median: fmtMoney(band.stats.median),
+                    p75: fmtMoney(band.stats.p75),
+                    max: fmtMoney(band.stats.max),
+                    caveats: band.stats.caveats,
+                  }
+                : null,
+            /** Why there is no band. An absent band with no reason reads as "nothing to say". */
+            price_band_absent: band?.kind === 'none' ? band.reason : null,
+            listings: listings.map((l) => ({
+              key: l.key,
+              title: l.title,
+              price: fmtMoney(l.totalPrice ?? l.price),
+              price_kind: l.priceKind,
+              condition: l.condition,
+              seller_type: l.sellerType,
+              delivery: l.delivery,
+              location: [l.location.postalCode, l.location.city].filter(Boolean).join(' '),
+              listed_at: l.listedAt,
+              ends_at: l.endsAt,
+              url: l.url,
+              verdict: result.verdicts.get(l.key),
+            })),
+          };
+        });
 
         return mcpSuccess({
           query: params.query,
           no_source_answered: result.noSourceAnswered,
           total: allListings(result.outcome).length,
-          price_band: result.stats && {
-            count: result.stats.count,
-            min: fmtMoney(result.stats.min),
-            p25: fmtMoney(result.stats.p25),
-            median: fmtMoney(result.stats.median),
-            p75: fmtMoney(result.stats.p75),
-            max: fmtMoney(result.stats.max),
-          },
           groups,
           merged: result.outcome.merged?.map((l) => l.key) ?? null,
+          /** Sources kept out of `merged` by licence. Their rows are in `groups`. */
+          merge_excluded: result.outcome.mergeExcluded,
+          products:
+            result.outcome.products?.map((g) => ({
+              identity: g.identity,
+              ambiguous: g.ambiguous,
+              keys: g.listings.map((l) => l.key),
+            })) ?? null,
           reports: result.outcome.reports.map((r) => ({
             provider: r.provider,
             outcome: r.outcome,
             count: r.count,
+            error_kind: r.errorKind,
             message: r.message,
             truncated: r.truncated,
+            requests: r.requests,
+            duration_ms: r.durationMs,
             warnings: r.warnings,
             filters_applied_by_source: r.filters.serverSide,
             filters_applied_locally: r.filters.clientSide,
             filters_not_applied: r.filters.unenforced,
+            // Without these three an agent reading `outcome: "empty"` plus
+            // `filters_applied_locally: ["maxPrice"]` cannot tell whether zero
+            // or twenty rows were discarded — while the tool description tells
+            // it to check `reports` before concluding an item is unavailable.
+            // The human surface printed them; this one dropped them.
+            rows_fetched: r.filters.before,
+            rows_after_filters: r.filters.after,
+            rows_dropped_by_limit: r.filters.dropped,
             disclaimer: r.disclaimer,
           })),
         });

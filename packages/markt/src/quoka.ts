@@ -177,6 +177,7 @@ export function quokaCapabilities(): ProviderCapabilities {
     disclaimer:
       'Quoka gestattet Ansicht und Download der Inhalte ausschließlich für persönliche, nicht-kommerzielle Zwecke — Weitergabe oder Veröffentlichung der Treffer ist nicht erlaubt.',
     note: null,
+    noCoMingling: false,
   };
 }
 
@@ -185,6 +186,15 @@ export function createQuokaProvider(deps: MarktDeps): MarketProvider {
 
   return {
     capabilities: quokaCapabilities(),
+
+    /**
+     * Requests spent against this host in this process.
+     *
+     * Read from the socket layer, not from a counter this adapter maintains —
+     * a `catch` path that forgets to book its requests is exactly how a failed
+     * search reported "0 Anfragen, 1189 ms".
+     */
+    requestsUsed: () => deps.http.requestsUsed(QUOKA_HOST),
 
     async status(): Promise<ProviderStatus> {
       if (!deps.enabled) {
@@ -250,13 +260,15 @@ export function createQuokaProvider(deps: MarktDeps): MarketProvider {
         if (!more || listings.length >= wanted) break;
       }
 
-      const kept = listings.slice(0, wanted);
+      // Everything fetched goes back uncut. `wanted` decided how deep to page;
+      // it is not a licence to throw away rows the kernel has not filtered or
+      // sorted yet — that is how "the five cheapest" became "the five newest,
+      // reordered" and a filtered-away page became the word `empty`.
       return {
         provider: PROVIDER,
-        listings: kept,
+        listings,
         applied,
-        truncated:
-          more || listings.length > wanted || (totalEstimate !== null && totalEstimate > kept.length),
+        truncated: more || (totalEstimate !== null && totalEstimate > listings.length),
         totalEstimate,
         requests,
         warnings,

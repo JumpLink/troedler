@@ -46,6 +46,9 @@ type Reply = (url: string, headers: Record<string, string>) => unknown;
 function harness(replies: { get?: Reply; token?: Reply } = {}): { http: EbayHttp; calls: Recorded[] } {
   const calls: Recorded[] = [];
   const http: EbayHttp = {
+    // Derived from the recorded calls, so the fake cannot claim zero for a
+    // request it actually made.
+    requestsUsed: () => calls.length,
     async getJson<T>(url: string, options: FetchOptions): Promise<T> {
       const headers = { ...options.headers };
       calls.push({ method: 'GET', url, headers });

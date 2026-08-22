@@ -14,11 +14,26 @@
 
 import type { CommandModule } from 'yargs';
 
-import { RESULTS_PER_PROVIDER, RESULTS_TOTAL, type Condition, type ProviderId } from '@troedler/core';
+import {
+  PROVIDER_LABEL,
+  RESULTS_PER_PROVIDER,
+  RESULTS_TOTAL,
+  type Condition,
+  type ProviderId,
+} from '@troedler/core';
 
 import { allListings, search } from '../../core/actions/index.ts';
 import { createContext } from '../../core/context.ts';
-import { pickArgv, printJson, renderListing, renderReport, renderStats, runAndExit } from './output.ts';
+import {
+  pickArgv,
+  printJson,
+  renderBand,
+  renderGroup,
+  renderGroupHeading,
+  renderListing,
+  renderReport,
+  runAndExit,
+} from './output.ts';
 
 const CONDITIONS = [
   'new',
@@ -84,6 +99,11 @@ export const searchCommand: CommandModule = {
         default: false,
         describe: 'Zusätzlich eine gemischte Liste über alle Quellen ausgeben',
       })
+      .option('compare', {
+        type: 'boolean',
+        default: false,
+        describe: 'Nach Produkt gruppieren: dasselbe Ding, alle Quellen nebeneinander',
+      })
       .option('explain', {
         type: 'boolean',
         default: false,
@@ -122,6 +142,7 @@ export const searchCommand: CommandModule = {
           limit: pickArgv<number>(raw, 'limit'),
           total: pickArgv<number>(raw, 'total'),
           merge: pickArgv<boolean>(raw, 'merge'),
+          compare: pickArgv<boolean>(raw, 'compare'),
         }),
       {
         print: (result) => {
@@ -129,34 +150,56 @@ export const searchCommand: CommandModule = {
             printJson({
               query: result.outcome.query,
               noSourceAnswered: result.noSourceAnswered,
-              stats: result.stats,
+              // One band per source, never one across them — see the note on
+              // `SearchResult.bands`.
+              bands: [...result.bands].map(([provider, band]) => ({ provider, band })),
               groups: [...result.outcome.grouped].map(([provider, listings]) => ({ provider, listings })),
               merged: result.outcome.merged,
+              mergeExcluded: result.outcome.mergeExcluded,
+              products: result.outcome.products,
               reports: result.outcome.reports,
             });
             return;
           }
 
           const listings = allListings(result.outcome);
-          if (result.outcome.merged) {
+          if (result.outcome.products) {
+            let n = 1;
+            for (const group of result.outcome.products) {
+              console.log(renderGroup(group, n, result.verdicts));
+              console.log('');
+              n += 1;
+            }
+          } else if (result.outcome.merged) {
             let n = 1;
             for (const listing of result.outcome.merged) {
               console.log(renderListing(listing, result.verdicts.get(listing.key), n));
               n += 1;
             }
+            // Rows are missing from this list by licence, not by chance. A
+            // reader who is not told will read the merged list as "everything".
+            if (result.outcome.mergeExcluded.length > 0) {
+              const names = result.outcome.mergeExcluded.map((id) => PROVIDER_LABEL[id] ?? id).join(', ');
+              console.log(
+                `\n${names} steht NICHT in dieser gemischten Liste — die Lizenz verlangt, ` +
+                  'diese Zeilen von fremden getrennt zu zeigen. Die Treffer stehen ohne --merge da.',
+              );
+            }
           } else {
-            for (const [, group] of result.outcome.grouped) {
+            for (const [provider, group] of result.outcome.grouped) {
+              if (group.length === 0) continue;
+              console.log(renderGroupHeading(provider, group.length));
               let n = 1;
               for (const listing of group) {
                 console.log(renderListing(listing, result.verdicts.get(listing.key), n));
                 n += 1;
               }
-              if (group.length > 0) console.log('');
+              const band = result.bands.get(provider);
+              if (band) console.log(renderBand(band));
+              console.log('');
             }
           }
 
-          const band = renderStats(result.stats);
-          if (band) console.log(`${band}\n`);
           for (const report of result.outcome.reports) console.log(renderReport(report, explain));
 
           // The distinction that matters more than any of the above: nobody

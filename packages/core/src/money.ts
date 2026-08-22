@@ -25,11 +25,10 @@ export function moneyFromDecimal(value: string | number, currency = 'EUR'): Mone
   return Number.isFinite(n) ? money(n * 100, currency.toUpperCase()) : null;
 }
 
-/** From an integer amount plus its divisor, the shape Etsy uses. */
-export function moneyFromDivisor(amount: number, divisor: number, currency: string): Money | null {
-  if (!Number.isFinite(amount) || !Number.isFinite(divisor) || divisor === 0) return null;
-  return money((amount / divisor) * 100, currency.toUpperCase());
-}
+// No `moneyFromDivisor` here yet. It existed, for "the shape Etsy uses", and
+// Etsy is not implemented — four lines of speculation with a green test and no
+// caller. It comes back with the adapter that needs it, measured against a real
+// response rather than a remembered one.
 
 export function addMoney(a: Money, b: Money | null | undefined): Money {
   if (!b) return a;

@@ -35,7 +35,22 @@ export function dedupeWithinProvider(listings: readonly Listing[]): Listing[] {
 }
 
 /**
- * A key for "the same physical offer, seen twice".
+ * A GTIN reduced to what makes two of them the same number.
+ *
+ * `0190295272432` and `190295272432` are one barcode — UPC-A padded onto
+ * EAN-13 — and both appear in the same Discogs `barcode[]` array. Nothing
+ * normalised them, so `merge.ts` and `filter.ts` compared strings and a row
+ * matched or missed depending on which spelling the source happened to print
+ * first. Digits only, leading zeros dropped.
+ */
+export function normalizeGtin(gtin: string | null): string | null {
+  if (!gtin) return null;
+  const digits = gtin.replace(/\D/g, '').replace(/^0+/, '');
+  return digits.length >= 8 ? digits : null;
+}
+
+/**
+ * A key for "the same product, offered in more than one place".
  *
  * A GTIN is the only identity worth trusting across marketplaces; without one
  * we fall back to normalised title plus price, which is deliberately
@@ -43,9 +58,15 @@ export function dedupeWithinProvider(listings: readonly Listing[]): Listing[] {
  * nothing else. Fuzzy title matching is NOT done here: it is exactly the kind
  * of helpfulness that merges two different bicycles and then reports the wrong
  * one as the cheaper.
+ *
+ * The fallback keys on the BARE price, while ranking keys on what you actually
+ * pay (`totalPrice ?? price`). That is deliberate and not an oversight: postage
+ * varies per seller, so the same book at 5,50 € from two shops is one product
+ * and two offers. Identity must not move when postage does.
  */
 export function identityKey(l: Listing): string | null {
-  if (l.gtin) return `gtin:${l.gtin}`;
+  const gtin = normalizeGtin(l.gtin);
+  if (gtin) return `gtin:${gtin}`;
   const t = normalizeTitle(l.title);
   const p = l.price?.minor;
   return t.length >= 12 && p !== undefined ? `tp:${t}:${p}` : null;
@@ -55,6 +76,19 @@ export interface ListingGroup {
   /** What the rows have in common, when they were grouped at all. */
   readonly identity: string | null;
   readonly listings: readonly Listing[];
+  /**
+   * True when one source contributed more than one row to this group.
+   *
+   * Then the shared identity is a code the rows happen to share, not one
+   * product seen twice — because the source itself keeps them apart. Measured
+   * on Discogs: barcode `5099996601419` covers the 2009 UK pressing, the 2015
+   * European one and a 2025 tour edition carrying Ralf Hütter's signature. All
+   * three are that barcode; only one of them is 11,18 €.
+   *
+   * A group like this may be SHOWN — "three editions under one barcode" is
+   * useful — but it must never be collapsed to a single representative row.
+   */
+  readonly ambiguous: boolean;
 }
 
 /**
@@ -67,14 +101,22 @@ export function groupByIdentity(listings: readonly Listing[]): ListingGroup[] {
   for (const l of listings) {
     const id = identityKey(l);
     if (id === null) {
-      singles.push({ identity: null, listings: [l] });
+      singles.push({ identity: null, listings: [l], ambiguous: false });
       continue;
     }
     const bucket = groups.get(id);
     if (bucket) bucket.push(l);
     else groups.set(id, [l]);
   }
-  return [...[...groups].map(([identity, ls]) => ({ identity, listings: ls })), ...singles];
+  const grouped = [...groups].map(([identity, ls]) => ({
+    identity,
+    listings: ls,
+    ambiguous: new Set(ls.map((l) => l.provider)).size < ls.length,
+  }));
+  // Groups with something to compare first — that is the question this whole
+  // shape exists to answer.
+  grouped.sort((a, b) => b.listings.length - a.listings.length);
+  return [...grouped, ...singles];
 }
 
 function priceOf(l: Listing): number {
@@ -142,12 +184,21 @@ export function interleaveByProvider(byProvider: ReadonlyMap<ProviderId, readonl
   return out;
 }
 
-/** Best row in a group: cheapest, then better condition, then newer. */
-export function bestOf(group: ListingGroup): Listing {
-  return [...group.listings].sort(
-    (a, b) =>
-      priceOf(a) - priceOf(b) ||
-      conditionRank(a.condition) - conditionRank(b.condition) ||
-      (b.listedAt ?? '').localeCompare(a.listedAt ?? ''),
-  )[0];
+/**
+ * Best row in a group: cheapest, then better condition, then newer.
+ *
+ * `null` for an ambiguous group. Answering "11,18 €" for a bucket holding a
+ * 31,00 € signed edition is not a rounding problem, it is the wrong answer to
+ * "what does this cost" — and it is the answer the caller would print.
+ */
+export function bestOf(group: ListingGroup): Listing | null {
+  if (group.ambiguous) return null;
+  return (
+    [...group.listings].sort(
+      (a, b) =>
+        priceOf(a) - priceOf(b) ||
+        conditionRank(a.condition) - conditionRank(b.condition) ||
+        (b.listedAt ?? '').localeCompare(a.listedAt ?? ''),
+    )[0] ?? null
+  );
 }

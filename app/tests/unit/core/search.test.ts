@@ -31,6 +31,7 @@ function caps(id: ProviderId, over: Partial<ProviderCapabilities> = {}): Provide
     termsDoc: `docs/quellen/${id}.md`,
     disclaimer: null,
     note: null,
+    noCoMingling: false,
     ...over,
   };
 }
@@ -42,14 +43,25 @@ function fake(
     problem?: { kind: 'not-configured'; message: string } | null;
     result?: Partial<ProviderResult>;
     throws?: Error;
+    /** Requests the source spends before it answers — or before it throws. */
+    spends?: number;
+    caps?: Partial<ProviderCapabilities>;
   },
 ): MarketProvider {
+  let spent = 0;
   return {
-    capabilities: caps(id, behaviour.result?.applied ? { serverFilters: behaviour.result.applied } : {}),
+    capabilities: caps(id, {
+      ...(behaviour.result?.applied ? { serverFilters: behaviour.result.applied } : {}),
+      ...behaviour.caps,
+    }),
+    requestsUsed: () => spent,
     async status() {
       return { configured: behaviour.configured ?? true, problem: behaviour.problem ?? null };
     },
     async search(): Promise<ProviderResult> {
+      // Spent BEFORE the throw, exactly like a real socket: the request went
+      // out, the quota is gone, and only then did the remote refuse.
+      spent += behaviour.spends ?? 0;
       if (behaviour.throws) throw behaviour.throws;
       return {
         provider: id,
@@ -108,6 +120,71 @@ export default async () => {
 
       const empty = fake('ebay', {});
       expect(allSourcesUnavailable(await searchAll([empty], query))).toBe(false);
+    });
+
+    await it('books the requests a failing source spent', async () => {
+      // Measured: a Booklooker run that spent one request, burned quota and came
+      // back AUTHENTICATION_FAILED was reported as "0 Anfragen, 1189 ms". The
+      // count now comes from the socket layer on both paths, so the catch branch
+      // cannot lose it.
+      const bad = fake('booklooker', {
+        spends: 1,
+        throws: new ProviderError('booklooker', 'refused', 'AUTHENTICATION_FAILED'),
+      });
+      const report = (await searchAll([bad], query)).reports[0];
+      expect(report.outcome).toBe('failed');
+      expect(report.requests).toBe(1);
+    });
+
+    await it('says "not booked" rather than zero when a source cannot account for its requests', async () => {
+      // `0` is a claim. A provider without `requestsUsed` has not made it.
+      const silent: MarketProvider = {
+        capabilities: caps('quoka'),
+        async status() {
+          return { configured: true, problem: null };
+        },
+        async search(): Promise<ProviderResult> {
+          throw new ProviderError('quoka', 'unreachable', 'weg');
+        },
+      };
+      expect((await searchAll([silent], query)).reports[0].requests).toBe(null);
+    });
+
+    await it('keeps a source that may not be co-mingled out of the merged list', async () => {
+      // eBay's API licence requires its rows to be "visually isolated from
+      // third-party listings". `merge.ts` named that as the reason `grouped` is
+      // primary — and nothing enforced it, so `--merge` interleaved eBay like
+      // everything else and would have shipped that with the keyset.
+      const ebay = fake('ebay', {
+        caps: { noCoMingling: true },
+        result: { listings: [listing({ provider: 'ebay', id: 'e1' })] },
+      });
+      const quoka = fake('quoka', { result: { listings: [listing({ provider: 'quoka', id: 'q1' })] } });
+
+      const outcome = await searchAll([ebay, quoka], query, { merge: true });
+      expect(outcome.merged?.map((l) => l.key)).toEqualArray(['quoka:q1']);
+      expect(outcome.mergeExcluded).toEqualArray(['ebay']);
+      // Not hidden — only kept out of the ONE layout the licence forbids.
+      expect(outcome.grouped.get('ebay')?.length).toBe(1);
+    });
+
+    await it('groups the same product across sources only when asked', async () => {
+      const ebay = fake('ebay', {
+        result: {
+          listings: [listing({ provider: 'ebay', id: 'e1', gtin: '0190295272432', price: money(12000) })],
+        },
+      });
+      const quoka = fake('quoka', {
+        result: {
+          listings: [listing({ provider: 'quoka', id: 'q1', gtin: '190295272432', price: money(4000) })],
+        },
+      });
+
+      expect((await searchAll([ebay, quoka], query)).products).toBe(null);
+
+      const grouped = await searchAll([ebay, quoka], query, { group: true });
+      expect(grouped.products?.length).toBe(1);
+      expect(grouped.products?.[0].listings.length).toBe(2);
     });
 
     await it('applies a filter the provider did not, and says which side did it', async () => {

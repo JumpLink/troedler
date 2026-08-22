@@ -16,7 +16,13 @@
  */
 
 import { applyPostFilters, type PostFilterReport } from './filter.ts';
-import { dedupeWithinProvider, interleaveByProvider, sortListings } from './merge.ts';
+import {
+  dedupeWithinProvider,
+  groupByIdentity,
+  interleaveByProvider,
+  sortListings,
+  type ListingGroup,
+} from './merge.ts';
 import { ProviderError, type ProviderErrorKind } from './errors.ts';
 import { RESULTS_PER_PROVIDER, RESULTS_TOTAL, clamp } from './limits.ts';
 import { activeFilters, type SearchQuery } from './query.ts';
@@ -35,7 +41,8 @@ export interface ProviderReport {
   readonly message: string | null;
   readonly truncated: boolean;
   readonly totalEstimate: number | null;
-  readonly requests: number;
+  /** HTTP requests this search cost. `null` when the provider cannot account for them — never a stand-in zero. */
+  readonly requests: number | null;
   readonly durationMs: number;
   readonly warnings: readonly string[];
   /** Which filters the source honoured, and which this process had to finish. */
@@ -50,6 +57,22 @@ export interface SearchOutcome {
   readonly grouped: ReadonlyMap<ProviderId, readonly Listing[]>;
   /** One flat list. Opt-in; see the eBay co-mingling note in merge.ts. */
   readonly merged: readonly Listing[] | null;
+  /**
+   * Providers whose rows were kept OUT of `merged` because their licence
+   * forbids interleaving them with other sources' rows. Their rows are in
+   * `grouped` as always — this is a layout rule, not a filter, and a surface
+   * that shows `merged` has to say which sources are missing from it.
+   */
+  readonly mergeExcluded: readonly ProviderId[];
+  /**
+   * The same rows grouped by PRODUCT identity across sources — "what does this
+   * thing cost where". Built only when asked (`SearchOptions.group`), because
+   * it costs a pass over every row and most callers want the per-source view.
+   *
+   * Named apart from `grouped` on purpose: that one is per SOURCE, this one is
+   * per THING, and two fields a letter apart would be read as the same field.
+   */
+  readonly products: readonly ListingGroup[] | null;
   readonly reports: readonly ProviderReport[];
   readonly startedAt: string;
 }
@@ -57,6 +80,8 @@ export interface SearchOutcome {
 export interface SearchOptions {
   /** Produce the flat list too. Off by default. */
   readonly merge?: boolean;
+  /** Produce cross-source product groups too. Off by default. */
+  readonly group?: boolean;
   readonly totalLimit?: number;
   readonly signal?: AbortSignal;
   /** Injected so tests can pin time. */
@@ -78,7 +103,6 @@ async function runOne(
     label: caps.label,
     truncated: false,
     totalEstimate: null,
-    requests: 0,
     warnings: [] as string[],
     disclaimer: caps.disclaimer,
     filters: {
@@ -87,7 +111,16 @@ async function runOne(
       unenforced: [] as never[],
       before: 0,
       after: 0,
+      dropped: 0,
     },
+  };
+
+  // Snapshot before and after, so the count comes from the socket layer rather
+  // than from an adapter remembering to update a field before it throws.
+  const spentBefore = provider.requestsUsed?.() ?? null;
+  const spent = (): number | null => {
+    const after = provider.requestsUsed?.() ?? null;
+    return spentBefore === null || after === null ? null : after - spentBefore;
   };
 
   try {
@@ -101,6 +134,7 @@ async function runOne(
           count: 0,
           errorKind: status.problem?.kind ?? 'not-configured',
           message: status.problem?.message ?? 'nicht konfiguriert',
+          requests: spent() ?? 0,
           durationMs: now() - started,
         },
       };
@@ -108,7 +142,9 @@ async function runOne(
 
     const result = await provider.search(query, options.signal);
     const deduped = dedupeWithinProvider(result.listings);
-    const { listings, report } = applyPostFilters(deduped, query, result.applied, active);
+    const { listings, report } = applyPostFilters(deduped, query, result.applied, active, {
+      limit: query.limit ?? deduped.length,
+    });
 
     return {
       listings,
@@ -118,9 +154,9 @@ async function runOne(
         count: listings.length,
         errorKind: null,
         message: null,
-        truncated: result.truncated,
+        truncated: result.truncated || report.dropped > 0,
         totalEstimate: result.totalEstimate,
-        requests: result.requests,
+        requests: spent() ?? result.requests,
         durationMs: now() - started,
         warnings: [...result.warnings],
         filters: { ...report, serverSide: result.applied.map(String) },
@@ -139,6 +175,7 @@ async function runOne(
         count: 0,
         errorKind: pe.kind,
         message: pe.message,
+        requests: spent(),
         durationMs: now() - started,
       },
     };
@@ -160,22 +197,46 @@ export async function searchAll(
   // are different budgets, so there is nothing to gain by making them wait.
   const settled = await Promise.all(providers.map((p) => runOne(p, scoped, options)));
 
+  // Already filtered, ordered and cut by `applyPostFilters` — either the kernel
+  // sorted or the provider did, and re-sorting here would overrule whichever it
+  // was. That mattered for `relevance`, the one order no cross-provider
+  // comparison can reconstruct.
   const grouped = new Map<ProviderId, readonly Listing[]>();
   for (const { report, listings } of settled) {
-    if (report.outcome === 'ok') grouped.set(report.provider, sortListings(listings, query.sort));
+    if (report.outcome === 'ok') grouped.set(report.provider, listings);
   }
+
+  const mergeExcluded = providers
+    .filter((p) => p.capabilities.noCoMingling && grouped.has(p.capabilities.id))
+    .map((p) => p.capabilities.id);
 
   let merged: Listing[] | null = null;
   if (options.merge) {
     const total = clamp(options.totalLimit, RESULTS_TOTAL);
+    const mixable = new Map(
+      [...grouped].filter(([id]) => !mergeExcluded.includes(id)),
+    );
     const flat =
       query.sort && query.sort !== 'relevance'
-        ? sortListings([...grouped.values()].flat(), query.sort)
-        : interleaveByProvider(grouped);
+        ? sortListings([...mixable.values()].flat(), query.sort)
+        : interleaveByProvider(mixable);
     merged = flat.slice(0, total);
   }
 
-  return { query, grouped, merged, reports: settled.map((s) => s.report), startedAt };
+  // Grouping reads across sources, so eBay rows belong in it — the licence
+  // rule is about one INTERLEAVED list, and a group that names its sources per
+  // row is the isolated presentation, not the mingled one.
+  const products = options.group ? groupByIdentity([...grouped.values()].flat()) : null;
+
+  return {
+    query,
+    grouped,
+    merged,
+    mergeExcluded: options.merge ? mergeExcluded : [],
+    products,
+    reports: settled.map((s) => s.report),
+    startedAt,
+  };
 }
 
 /** True when every provider either failed or was skipped — "no results" would be a lie. */

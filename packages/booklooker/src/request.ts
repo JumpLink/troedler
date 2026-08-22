@@ -43,6 +43,8 @@ export const API_HOST = 'api.booklooker.de';
 export interface BooklookerHttp {
   getJson<T>(url: string, options: FetchOptions): Promise<T>;
   postJson<T>(url: string, options: FetchOptions): Promise<T>;
+  /** Requests spent against a host this process. Read by the fan-out on both the success and the failure path. */
+  requestsUsed(host: string): number;
 }
 
 /**

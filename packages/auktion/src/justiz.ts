@@ -144,6 +144,7 @@ const CAPABILITIES: ProviderCapabilities = {
   disclaimer:
     'Justiz-Auktion: Der genannte Betrag ist das aktuelle Höchstgebot bzw. das Startgebot, kein Kaufpreis.',
   note: SEARCH_REFUSAL,
+  noCoMingling: false,
 };
 
 export function createJustizAuktionProvider(deps: AuktionDeps): MarketProvider {
@@ -151,6 +152,15 @@ export function createJustizAuktionProvider(deps: AuktionDeps): MarketProvider {
 
   return {
     capabilities: CAPABILITIES,
+
+    /**
+     * Requests spent against this host in this process.
+     *
+     * Read from the socket layer, not from a counter this adapter maintains —
+     * a `catch` path that forgets to book its requests is exactly how a failed
+     * search reported "0 Anfragen, 1189 ms".
+     */
+    requestsUsed: () => deps.http.requestsUsed(HOST),
 
     async status(): Promise<ProviderStatus> {
       if (!deps.enabled) {

@@ -12,11 +12,11 @@ import {
   RESULTS_TOTAL,
   allSourcesUnavailable,
   clamp,
-  priceStats,
+  priceBand,
   searchAll,
   verdictFor,
   type Listing,
-  type PriceStats,
+  type PriceBand,
   type PriceVerdict,
   type ProviderId,
   type SearchOutcome,
@@ -28,15 +28,25 @@ import { selectProviders, type Context } from '../context.ts';
 export interface SearchInput extends SearchQuery {
   readonly providers?: readonly ProviderId[];
   readonly merge?: boolean;
+  /** Group the rows by product identity across sources. */
+  readonly compare?: boolean;
   readonly total?: number;
   readonly signal?: AbortSignal;
 }
 
 export interface SearchResult {
   readonly outcome: SearchOutcome;
-  /** Statistics over everything that came back, across providers. */
-  readonly stats: PriceStats | null;
-  /** Per-listing verdict, keyed by `Listing.key`. */
+  /**
+   * One price band PER SOURCE, keyed by provider — never one across all of them.
+   *
+   * The single cross-provider band was measured and it was nonsense: a Discogs
+   * aggregate minimum, a Quoka asking price and the current bid on a car in the
+   * same quartiles, with only the Booklooker rows carrying postage. Each source
+   * speaks its own kind of number, so each gets its own band, and a source whose
+   * rows are not comparable even among themselves gets a stated reason instead.
+   */
+  readonly bands: ReadonlyMap<ProviderId, PriceBand>;
+  /** Per-listing verdict, keyed by `Listing.key`. Judged against that row's OWN source's band. */
   readonly verdicts: ReadonlyMap<string, PriceVerdict>;
   /**
    * True when not one provider answered. The caller must say so out loud
@@ -66,16 +76,21 @@ export async function search(context: Context, input: SearchInput): Promise<Sear
 
   const outcome = await searchAll(providers, query, {
     merge: input.merge,
+    group: input.compare,
     totalLimit: clamp(input.total, RESULTS_TOTAL),
     signal: input.signal,
   });
 
-  const all: Listing[] = [...outcome.grouped.values()].flat();
-  const stats = priceStats(all);
+  const bands = new Map<ProviderId, PriceBand>();
   const verdicts = new Map<string, PriceVerdict>();
-  for (const listing of all) verdicts.set(listing.key, verdictFor(listing, stats));
+  for (const [provider, listings] of outcome.grouped) {
+    const band = priceBand(listings);
+    bands.set(provider, band);
+    const stats = band.kind === 'band' ? band.stats : null;
+    for (const listing of listings) verdicts.set(listing.key, verdictFor(listing, stats));
+  }
 
-  return { outcome, stats, verdicts, noSourceAnswered: allSourcesUnavailable(outcome) };
+  return { outcome, bands, verdicts, noSourceAnswered: allSourcesUnavailable(outcome) };
 }
 
 /** Flatten an outcome for callers that want one list regardless of grouping. */

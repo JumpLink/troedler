@@ -127,6 +127,17 @@ export class DiscogsProvider implements MarketProvider {
    * the normal, working mode of this adapter. Saying otherwise would put a
    * permanent warning next to a source that is doing its job.
    */
+  /**
+   * Requests spent against this host in this process.
+   *
+   * Read from the socket layer, not from a counter this adapter maintains —
+   * a `catch` path that forgets to book its requests is exactly how a failed
+   * search reported "0 Anfragen, 1189 ms".
+   */
+  requestsUsed(): number {
+    return this.#http.requestsUsed(DISCOGS_HOST);
+  }
+
   async status(): Promise<ProviderStatus> {
     if (!this.#enabled) {
       return {
@@ -399,6 +410,7 @@ function buildCapabilities(hasToken: boolean): ProviderCapabilities {
     note: hasToken
       ? `Liefert Releases mit Ab-Preis, keine Einzelangebote: Discogs' öffentliche API kennt nur das Aggregat „N Angebote ab X €" pro Release. Die einzelnen Angebote stehen hinter der verlinkten Seite. Mit Token 60 Anfragen/Minute; da jeder Treffer eine eigene Preisabfrage kostet, sind das bis zu ${AUTHENTICATED_PER_MINUTE - BUDGET_RESERVE} Treffer je Suche.`
       : `Liefert Releases mit Ab-Preis, keine Einzelangebote: Discogs' öffentliche API kennt nur das Aggregat „N Angebote ab X €" pro Release. Die einzelnen Angebote stehen hinter der verlinkten Seite. Ohne Token 25 Anfragen/Minute, und da jeder Treffer eine eigene Preisabfrage kostet, sind das bis zu ${UNAUTHENTICATED_PER_MINUTE - BUDGET_RESERVE} Treffer je Suche. Ein kostenloser Personal Access Token (discogs.com/settings/developers) in DISCOGS_TOKEN hebt das auf 60/Minute und liefert zusätzlich Coverbilder, die ohne Token leer bleiben.`,
+    noCoMingling: false,
   };
 }
 

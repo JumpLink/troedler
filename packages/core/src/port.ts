@@ -81,9 +81,32 @@ export interface ProviderCapabilities {
   readonly disclaimer: string | null;
   /** Why this provider is off / what the user must do to use it. Shown by `providers show`. */
   readonly note: string | null;
+
+  /**
+   * True when this source's rows may not be shown interleaved with other
+   * sources' rows in one list.
+   *
+   * eBay's API licence requires eBay listings in a display to be "visually
+   * isolated from third-party listings". `merge.ts` names that as the reason
+   * `grouped` is the primary shape — but nothing enforced it, so `--merge`
+   * interleaved eBay like everything else and would have shipped that the day
+   * the keyset arrived. A flag rather than an `if (id === 'ebay')` for the same
+   * reason `disclaimer` is data: the next source with the same clause sets it
+   * and every surface obeys without being told about that source.
+   */
+  readonly noCoMingling: boolean;
 }
 
-/** What one provider hands back for one query. */
+/**
+ * What one provider hands back for one query.
+ *
+ * **Everything it fetched, uncut.** `query.limit` tells an adapter how deep to
+ * page; it is NOT a licence to throw away the surplus rows from the last page.
+ * The kernel filters, sorts and only then cuts (`filter.ts`), because an
+ * adapter-side cut answers "the five cheapest" with "the five newest, reordered"
+ * and turns a filtered-away page into the word `empty` — both measured, both
+ * invisible from outside.
+ */
 export interface ProviderResult {
   readonly provider: ProviderId;
   readonly listings: readonly Listing[];
@@ -124,6 +147,19 @@ export interface MarketProvider {
 
   /** One offer in full. `null` when the id is gone — that is an answer, not an error. */
   getListing?(id: string, signal?: AbortSignal): Promise<Listing | null>;
+
+  /**
+   * Requests this provider has spent in this process so far.
+   *
+   * Read by the fan-out BEFORE and AFTER each search, so the number comes from
+   * the layer that opened the sockets rather than from a counter an adapter has
+   * to remember to update. That matters on the failure path: the old report
+   * built its count from a zeroed base, so a Booklooker run that spent a
+   * request, burned quota and came back `AUTHENTICATION_FAILED` was booked as
+   * "0 Anfragen, 1189 ms". A provider that cannot account for its requests
+   * omits this and the report says so, rather than saying zero.
+   */
+  requestsUsed?(): number;
 
   /** Remaining budget at the source, when it publishes one. */
   quota?(

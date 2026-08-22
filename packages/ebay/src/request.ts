@@ -40,6 +40,8 @@ const PROVIDER = 'ebay';
 export interface EbayHttp {
   getJson<T>(url: string, options: FetchOptions): Promise<T>;
   postForm<T>(url: string, form: Record<string, string>, options: FetchOptions): Promise<T>;
+  /** Requests spent against a host this process. Read by the fan-out on both the success and the failure path. */
+  requestsUsed(host: string): number;
 }
 
 export interface EbayClientOptions {

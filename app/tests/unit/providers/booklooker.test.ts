@@ -160,6 +160,11 @@ function fakeHttp(script: Script): { http: BooklookerHttp; calls: string[] } {
   };
 
   const http: BooklookerHttp = {
+    // Derived from the calls actually recorded — including the one that threw,
+    // because `next` records before it throws. A separate counter here would be
+    // a fake that always says 0, which is precisely the bug: a run that spent a
+    // request, burned Booklooker quota and failed was booked as "0 Anfragen".
+    requestsUsed: () => calls.length,
     async getJson<T>(url: string): Promise<T> {
       return next(get, 'GET', url) as T;
     },

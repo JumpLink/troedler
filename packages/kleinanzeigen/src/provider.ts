@@ -147,6 +147,7 @@ export function capabilitiesFor(scope: KleinanzeigenScope): ProviderCapabilities
       `Wer die Quelle trotzdem nutzen will, liest zuerst ${TERMS_DOC} und schaltet sie dann selbst frei ` +
       '(`troedler providers enable kleinanzeigen --acknowledge`) — auf eigene Verantwortung. ' +
       'Preis-, Umkreis-, Sortier- und Anbieterfilter sind bei dieser Quelle laut robots.txt gesperrt und werden deshalb erst nach dem Abruf angewendet — höchstens 125 Treffer je Suche.',
+    noCoMingling: false,
   };
 }
 
@@ -189,6 +190,17 @@ export class KleinanzeigenProvider implements MarketProvider {
    * source record, so `troedler providers show` can explain itself without
    * knowing anything about this marketplace.
    */
+  /**
+   * Requests spent against this host in this process.
+   *
+   * Read from the socket layer, not from a counter this adapter maintains —
+   * a `catch` path that forgets to book its requests is exactly how a failed
+   * search reported "0 Anfragen, 1189 ms".
+   */
+  requestsUsed(): number {
+    return this.#http.requestsUsed(HOST);
+  }
+
   async status(): Promise<ProviderStatus> {
     if (this.#configError) {
       return {
@@ -264,15 +276,18 @@ export class KleinanzeigenProvider implements MarketProvider {
       }
     }
 
+    // Everything fetched goes back uncut. `wanted` decided how deep to page;
+    // it is not a licence to throw away rows the kernel has not filtered or
+    // sorted yet — that is how "the five cheapest" became "the five newest,
+    // reordered" and a filtered-away page became the word `empty`.
     return {
       provider: PROVIDER,
-      listings: listings.slice(0, wanted),
+      listings,
       // Nothing was applied at the source. Saying so is the point: a "max
       // 200 €" the kernel applied searched these ~125 rows, not the 922 000
       // the site says it has.
       applied: [],
-      truncated:
-        more || listings.length > wanted || (totalEstimate !== null && totalEstimate > listings.length),
+      truncated: more || (totalEstimate !== null && totalEstimate > listings.length),
       totalEstimate,
       requests,
       warnings,

@@ -6,6 +6,7 @@
  * Anything both surfaces show is defined once, here.
  */
 
+import { fmtMoney, type Money } from './money.ts';
 import type { Condition, Delivery, PriceKind, ProviderId, SellerType } from './listing.ts';
 
 export const CONDITION_LABEL: Record<Condition, string> = {
@@ -29,6 +30,21 @@ export const PRICE_KIND_LABEL: Record<PriceKind, string> = {
   from: 'ab',
   unknown: '',
 };
+
+/**
+ * A price with its kind attached on the side German puts it.
+ *
+ * "ab" is a preposition and leads; "VB" and "Auktion" trail. Appending all
+ * three printed "9,00 € ab", which reads like a typo — on exactly the rows
+ * where the marker is the whole point, because a Discogs "ab" price is the
+ * cheapest of N copies worldwide and not something you can buy for that.
+ */
+export function fmtPriceWithKind(price: Money | null | undefined, kind: PriceKind): string {
+  const text = fmtMoney(price);
+  const label = PRICE_KIND_LABEL[kind];
+  if (!label) return text;
+  return kind === 'from' ? `${label} ${text}` : `${text} ${label}`;
+}
 
 export const SELLER_TYPE_LABEL: Record<SellerType, string> = {
   private: 'privat',

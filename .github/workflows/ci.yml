@@ -76,6 +76,13 @@ jobs:
       - name: Guard against URL mutation
         run: node scripts/guard-url-mutation.mjs
 
+      # Also a grep, and for a reason no test can cover: a test proves a kernel
+      # function WORKS, never that anything USES it. `groupByIdentity` and
+      # `bestOf` — the cross-source grouping this project exists for — had a
+      # green test each and no caller at all.
+      - name: Guard against unreachable kernel functions
+        run: node scripts/guard-unused-kernel.mjs
+
       - name: Build the CLI bundle
         run: gjsify workspace troedler-cli build
 
