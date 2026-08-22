@@ -22,6 +22,7 @@
  */
 
 import type { Money } from './money.ts';
+import type { TimePrecision } from './normalize.ts';
 
 /** Every marketplace troedler can speak to. Also the key in config and CLI flags. */
 export type ProviderId =
@@ -103,6 +104,18 @@ export interface Listing {
 
   /** When the offer went up. ISO 8601 UTC. */
   readonly listedAt: string | null;
+  /**
+   * How much of that the source actually said. `null` exactly when `listedAt`
+   * is null.
+   *
+   * `day` means the page printed a calendar day and no clock, so `listedAt`
+   * holds MIDNIGHT — the earliest instant it could be, not the instant it was.
+   * Without this the two were indistinguishable and `--since <heute 12:00>`
+   * dropped every ad from today, whatever time it went up. Measured on Quoka:
+   * page 1 of a search carries 6 of 20 rows in the day-only form, page 100
+   * carries 20 of 20.
+   */
+  readonly listedAtPrecision: TimePrecision | null;
   /** When it ends — meaningful for auctions, rolling and meaningless for fixed-price listings. */
   readonly endsAt: string | null;
   /** Live auctions only. */

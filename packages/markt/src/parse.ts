@@ -17,7 +17,7 @@
  * defect.
  */
 
-import { listingKey, type Listing, type SellerType } from '@troedler/core';
+import { listingKey, stripContactDetails, type Listing, type SellerType } from '@troedler/core';
 import { attr, parseHtml, query, queryAll, text, textOf, type HtmlElement } from '@troedler/html';
 
 import {
@@ -156,6 +156,7 @@ function marktSellerType(ad: MarktRawAd): SellerType {
 
 function marktAdToListing(ad: MarktRawAd, now: Date, fetchedAt: string): Listing {
   const price = parseMarktPrice(ad.priceAmountText, ad.priceLabelText);
+  const postedAt = parseMarktDate(ad.dateText, now);
   return {
     key: listingKey('markt-de', ad.id),
     provider: 'markt-de',
@@ -177,7 +178,8 @@ function marktAdToListing(ad: MarktRawAd, now: Date, fetchedAt: string): Listing
     // Shipping versus collection is stated in the ad body, not in a field.
     delivery: 'unknown',
     location: splitPostalPlace(ad.locationText, parseDistanceKm(ad.distanceText)),
-    listedAt: parseMarktDate(ad.dateText, now),
+    listedAt: postedAt?.iso ?? null,
+    listedAtPrecision: postedAt?.precision ?? null,
     endsAt: null,
     bidCount: null,
     images: ad.imageUrls,
@@ -347,11 +349,16 @@ function parseQuokaRow(row: HtmlElement): QuokaRawAd | null {
 
 function quokaAdToListing(ad: QuokaRawAd, now: Date, fetchedAt: string, sellerType: SellerType): Listing {
   const price = parseQuokaPrice(ad.priceText);
+  const postedAt = parseQuokaDate(ad.dateText, now);
   return {
     key: listingKey('quoka', ad.id),
     provider: 'quoka',
     id: ad.id,
-    title: ad.title,
+    // Scrubbed like the description, not raw. `types.ts` promises this source
+    // carries contact details "on every row"; that held for one field of two,
+    // and a phone number in a title reaches the cache exactly as fast as one in
+    // the body. Nothing in a 66-title sample carried one — a gap, not a leak.
+    title: stripContactDetails(ad.title),
     description: cleanDescription(ad.description),
     url: ad.url,
     price: price.price,
@@ -363,7 +370,8 @@ function quokaAdToListing(ad: QuokaRawAd, now: Date, fetchedAt: string, sellerTy
     sellerType,
     delivery: 'unknown',
     location: splitPostalPlace(quokaPlace(ad.locationText), null),
-    listedAt: parseQuokaDate(ad.dateText, now),
+    listedAt: postedAt?.iso ?? null,
+    listedAtPrecision: postedAt?.precision ?? null,
     endsAt: null,
     bidCount: null,
     images: ad.imageUrls,

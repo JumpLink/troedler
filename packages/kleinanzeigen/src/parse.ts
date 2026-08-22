@@ -201,6 +201,7 @@ function rowToListing(ad: HtmlElement, options: ParseOptions, fetchedAt: string)
 
   const { price, kind } = parseGermanPrice(textOf(ad, SRP.price));
   const tags = queryAll(ad, SRP.tag).map((t) => clean(text(t)));
+  const postedAt = parseGermanDate(textOf(ad, SRP.date), options.now);
 
   return {
     key: listingKey(PROVIDER, id),
@@ -223,7 +224,8 @@ function rowToListing(ad: HtmlElement, options: ParseOptions, fetchedAt: string)
     sellerType: sellerTypeFrom(queryAll(ad, SRP.commercial).length > 0),
     delivery: deliveryFromTags(tags),
     location: parseLocation(textOf(ad, SRP.location)),
-    listedAt: parseGermanDate(textOf(ad, SRP.date), options.now),
+    listedAt: postedAt?.iso ?? null,
+    listedAtPrecision: postedAt?.precision ?? null,
     endsAt: null,
     bidCount: null,
     images: imagesFrom(ad),
@@ -355,6 +357,7 @@ export function parseListingPage(html: string, id: string, options: ListingParse
   }
 
   const details = parseDetails(doc);
+  const postedAt = parseGermanDate(textOf(doc, VIP.postedAt), options.now);
   const conditionRaw = details.get('Zustand') ?? null;
   const condition: Condition = conditionRaw ? conditionFromGerman(conditionRaw) : 'unknown';
 
@@ -396,7 +399,8 @@ export function parseListingPage(html: string, id: string, options: ListingParse
     sellerType,
     delivery,
     location: parseLocation(textOf(doc, VIP.locality)),
-    listedAt: parseGermanDate(textOf(doc, VIP.postedAt), options.now),
+    listedAt: postedAt?.iso ?? null,
+    listedAtPrecision: postedAt?.precision ?? null,
     endsAt: null,
     bidCount: null,
     images: [...new Set(images)],

@@ -150,10 +150,15 @@ https://www.quoka.de/anzeigen/<kategorie>/?q=<begriff>&commercial=&pag=
 | Parameter | Meaning | *Measured* behaviour |
 |---|---|---|
 | `q` | Suchbegriff | free text, not slugged; `?q=fahrrad` → 3 521 hits |
-| `commercial` | Anbietertyp | **works.** `false` → 1 140, `true` → 2 381, matching the counts the site prints beside the filter |
+| `commercial` | Anbietertyp | **works.** `false` → 1 140, `true` → 2 381, matching the counts the site prints beside the filter. Re-confirmed 2026-08-22 against two detail pages, one per side. The adapter stamps the REQUESTED type onto every row, which is only true while the operator honours the parameter: were it ignored, `resultscount` would stay at its unfiltered value and the stamp would be set anyway. Comparing the filtered count against the unfiltered one is the canary, and it costs a second request that is not spent today |
 | `pag` | Seite, 1-based | `&pag=2`; the pagination links up to page 100 |
-| `pricetype` | Preistyp | `zu verschenken` → every row reads „zu verschenken" |
-| `withpictures` | nur mit Bild | present in the markup; not used by the adapter |
+| `pricetype` | Preistyp | **unverified.** Re-checked 2026-08-22: the name appears in none of six fetched pages, and the filter form carries `q`, `category`, `County`, `City`, `Area`, `Zip`, `make`, `model`, `subcategory`, `breed`, `species`, `multi_handover`. The claim above was not re-measured and it was not sent — inventing a parameter is how the `Zip`/`Area` attempt below produced zero rows |
+| `withpictures` | nur mit Bild | same: named here, not found in the markup, not sent |
+| `multi_handover` | Abholung / Versand | present in the filter form WITH facet counts. Not used by the adapter, and the only route by which `Listing.delivery` could ever be anything but `unknown` on this source. Untested |
+
+**Two rows above are inference, not measurement, and are marked as such rather
+than deleted** — the trail matters more than the tidiness. Anything built on
+them re-measures first.
 
 Category is a path, not a parameter: `/anzeigen/elektronik/computer/`.
 
@@ -223,6 +228,41 @@ parseGermanPrice("1400.0 EUR") → 140,00 €   (a tenth of it)
 Both then sort to the top of a price-ascending search looking like the bargain
 of the year. `germanizeAmount()` rewrites the amount into the notation core
 documents, and the money semantics stay core's job.
+
+**And the rewriter itself broke the one notation core already read.** *Measured
+2026-08-22:* `germanizeAmount("1.400 EUR")` returned `"1,400 EUR"`, which parsed
+back as **1,40 €** — wrong by a factor of a thousand, downwards, i.e. straight to
+the top of a price-ascending search. Its fraction group matched the first two
+digits after the dot without checking whether more followed. Quoka prints its
+thousands with spaces, so nothing triggered it and nothing would have noticed if
+the site changed.
+
+**The result row states no price type, and troedler said „Festpreis" anyway.**
+*Measured 2026-08-22:* zero occurrences of `detail-price-type`, `Festpreis` or
+`verhandelbar` as a FIELD across six search pages — the handful of hits are all
+inside ad titles and bodies. `parseGermanPrice` answers `fixed` for any bare
+number, so every priced Quoka row was labelled a fixed price. Both detail pages
+sampled contradict it: `420706609` carries
+`<span class="detail-price-type">verhandelbar</span>` and its body reads
+„Preis: VB 4.990,00 EUR"; `216002432` reads „7 EUR VHB". Two of two. `fixed` —
+and only `fixed` — is now downgraded to `unknown`; `free` and `negotiable`
+survive, because those come from words the source really printed. markt.de keeps
+`fixed`, because markt.de labels its prices.
+
+**The date is minute-precise or day-precise, and the difference is invisible in
+the value.** `heute 14:44` gives a real clock; `20 August` gives midnight, which
+is the earliest instant that day could mean rather than when the ad went up. As
+one ISO string the two are indistinguishable, so `--since <that day, midday>`
+dropped the whole day. *Measured:* page 1 of `?q=klavier` carries 6 of 20 rows in
+the day-only form, page 100 of `?q=fahrrad` carries 20 of 20. `Listing` now
+carries `listedAtPrecision`, and the `since` filter asks whether the ad COULD
+have gone up after the cutoff.
+
+**The title was never scrubbed.** `cleanDescription` ran over the body,
+`title` went through raw — while this source's DTO notes promise contact details
+are filtered "on every row". *Measured:* 0 of 66 live titles carried a number, so
+it was a gap rather than a leak; a phone number in a title reaches the cache
+exactly as fast as one in a body.
 
 **A zero-hit search returns six ads *inside the result list*.** *Measured* on
 `/anzeigen/?q=fahrrad&Zip=30966&Area=25`: HTTP 200, `var resultscount = 0`, the

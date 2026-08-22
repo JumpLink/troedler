@@ -34,8 +34,34 @@ export function normalizeTitle(input: string): string {
 }
 
 const EMAIL = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
-/** German phone shapes: +49…, 0049…, 0176…, with spaces, slashes, dashes or dots between. */
-const PHONE = /(?:\+49|0049|\b0)[\d\s()/.-]{7,}\d/g;
+
+/**
+ * German phone shapes: `+49…`, `0049…`, `0176…`, with a single space, slash,
+ * dash, bracket or dot between digits.
+ *
+ * A SINGLE separator, not a run of them, and that is load-bearing. The previous
+ * shape put every separator in one character class, so any stretch of digits and
+ * punctuation starting at a `0` was a phone number. Measured over 132 live text
+ * fields on Quoka, the scrubber fired exactly once — on
+ * `"Die Kleinen wurden am 06.05.2026 geboren."` — and that was its only effect
+ * on the whole source: one activation, one false positive, zero real numbers.
+ * Opening hours went the same way, because `9.00 - 14.00` contains ` - `, two
+ * separators in a row, which this shape no longer walks through.
+ *
+ * The slack after an explicit `+49` / `0049` is the exception, and it is safe
+ * for the same reason: `+49 (0)176 …` needs it, and no date or time range can
+ * reach that branch at all. Without it the match started inside the `(0)` and
+ * left `+49 (` standing next to the redaction.
+ */
+const PHONE = /(?:(?:\+49|0049)[\s/()-]{0,3}|\b0)(?:[\s/()\u2013.-]?\d){7,14}\b/g;
+
+/**
+ * A German date, which the shape above can still reach: `06.05.2026` is a `0`
+ * followed by seven digits and two dots. Cheaper and clearer than making the
+ * phone pattern reject it, and it fails in the safe direction — a real number
+ * written exactly like a date keeps being scrubbed, a date is kept.
+ */
+const DATE_LIKE = /^\d{1,2}\.\d{1,2}\.(?:\d{2}|\d{4})$/;
 
 /**
  * Strip contact details from free text.
@@ -45,9 +71,15 @@ const PHONE = /(?:\+49|0049|\b0)[\d\s()/.-]{7,}\d/g;
  * are avoiding — kleinanzeigen's terms forbid collecting other users' phone
  * numbers outright, and the EDPB's scraping guidance asks for exactly this
  * kind of syntax filter at collection time.
+ *
+ * Over-scrubbing is not the harmless side of the trade: a redactor that only
+ * ever destroys dates is pure loss, and it teaches the reader to distrust the
+ * `[…]` that DOES cover a phone number.
  */
 export function stripContactDetails(text: string): string {
-  return text.replace(EMAIL, '[…]').replace(PHONE, '[…]');
+  return text
+    .replace(EMAIL, '[…]')
+    .replace(PHONE, (match) => (DATE_LIKE.test(match.trim()) ? match : '[…]'));
 }
 
 export interface ParsedPrice {
@@ -184,17 +216,29 @@ export function zonedToday(
  * `timeZone` is a parameter for the same class of reason one level up: the answer must not depend
  * on where the machine happens to stand. Returns ISO 8601 UTC.
  */
+/** How much of a timestamp the source actually printed. */
+export type TimePrecision = 'minute' | 'day';
+
+export interface ParsedDate {
+  readonly iso: string;
+  /** `day` when the page named a calendar day and no clock — `iso` is then midnight. */
+  readonly precision: TimePrecision;
+}
+
 export function parseGermanDate(
   raw: string | null | undefined,
   now: Date,
   timeZone: string = MARKETPLACE_TIME_ZONE,
-): string | null {
+): ParsedDate | null {
   const text = (raw ?? '').replace(INVISIBLE, '').trim();
   if (!text) return null;
 
   const time = text.match(/(\d{1,2}):(\d{2})/);
   const hours = time ? Number.parseInt(time[1], 10) : 0;
   const minutes = time ? Number.parseInt(time[2], 10) : 0;
+  // Known here and nowhere else: once the string is an instant, midnight-because-
+  // the-page-said-so and midnight-because-that-is-when look identical.
+  const precision: TimePrecision = time ? 'minute' : 'day';
 
   const lower = text.toLowerCase();
   if (lower.startsWith('heute') || lower.startsWith('gestern')) {
@@ -204,16 +248,19 @@ export function parseGermanDate(
     const dayShift = lower.startsWith('gestern') ? -1 : 0;
     // Date.UTC normalises an out-of-range day, so the 1st minus one lands on the previous month.
     const shifted = new Date(Date.UTC(today.year, today.month - 1, today.day + dayShift));
-    return new Date(
-      zonedWallClockToUtc(
-        shifted.getUTCFullYear(),
-        shifted.getUTCMonth() + 1,
-        shifted.getUTCDate(),
-        hours,
-        minutes,
-        timeZone,
-      ),
-    ).toISOString();
+    return {
+      iso: new Date(
+        zonedWallClockToUtc(
+          shifted.getUTCFullYear(),
+          shifted.getUTCMonth() + 1,
+          shifted.getUTCDate(),
+          hours,
+          minutes,
+          timeZone,
+        ),
+      ).toISOString(),
+      precision,
+    };
   }
 
   const dmy = text.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
@@ -226,7 +273,7 @@ export function parseGermanDate(
       minutes,
       timeZone,
     );
-    return Number.isNaN(instant) ? null : new Date(instant).toISOString();
+    return Number.isNaN(instant) ? null : { iso: new Date(instant).toISOString(), precision };
   }
   return null;
 }

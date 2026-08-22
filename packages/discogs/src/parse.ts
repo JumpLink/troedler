@@ -293,6 +293,7 @@ export function mapReleases(
       // Discogs' `date_added` is when the catalogue entry was created — often
       // decades after the record and unrelated to when anything went on sale.
       listedAt: null,
+      listedAtPrecision: null,
       endsAt: null,
       bidCount: null,
       images,

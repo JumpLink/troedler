@@ -15,6 +15,7 @@ import {
   DESCRIPTION_CHARS,
   ProviderError,
   parseGermanDate,
+  type ParsedDate,
   parseGermanPrice,
   stripContactDetails,
   zonedToday,
@@ -187,14 +188,14 @@ export function largestImage(src: string | null, srcset: string | null): string 
  * Only "Min." was observed in the field (up to `"vor 55 Min."`, after which the
  * site switches to `HH:MM`); "Std." is its obvious sibling and costs one branch.
  */
-export function parseMarktDate(raw: string | null | undefined, now: Date): string | null {
+export function parseMarktDate(raw: string | null | undefined, now: Date): ParsedDate | null {
   const text = (raw ?? '').replace(/\u00A0/g, ' ').trim();
   const relative = text.match(/vor\s+(\d+)\s*(Min|Std|Stunde|Minute)/i);
   if (relative) {
     const value = Number.parseInt(relative[1], 10);
     if (!Number.isFinite(value)) return null;
     const seconds = /^s/i.test(relative[2]) ? value * 3600 : value * 60;
-    return new Date(now.getTime() - seconds * 1000).toISOString();
+    return { iso: new Date(now.getTime() - seconds * 1000).toISOString(), precision: 'minute' };
   }
   return parseGermanDate(text, now);
 }
@@ -228,7 +229,7 @@ const GERMAN_MONTHS: Record<string, number> = {
  * year would post-date ads into the future, where a `--since` filter keeps them
  * forever.
  */
-export function parseQuokaDate(raw: string | null | undefined, now: Date): string | null {
+export function parseQuokaDate(raw: string | null | undefined, now: Date): ParsedDate | null {
   const text = (raw ?? '').replace(/\u00A0/g, ' ').trim();
   if (!text) return null;
 
@@ -247,7 +248,12 @@ export function parseQuokaDate(raw: string | null | undefined, now: Date): strin
   const today = zonedToday(now);
   const thisYear = zonedWallClockIso(today.year, month + 1, day);
   if (thisYear === null) return null;
-  return Date.parse(thisYear) > now.getTime() ? zonedWallClockIso(today.year - 1, month + 1, day) : thisYear;
+  const iso =
+    Date.parse(thisYear) > now.getTime() ? zonedWallClockIso(today.year - 1, month + 1, day) : thisYear;
+  // `20 August` names a day and no clock, so this is midnight — the earliest
+  // instant it could be, not the instant it was. Saying so is what keeps
+  // `--since <that day, midday>` from dropping the whole day.
+  return iso === null ? null : { iso, precision: 'day' };
 }
 
 /**
@@ -267,14 +273,21 @@ export function parseQuokaDate(raw: string | null | undefined, now: Date): strin
  * parser documents — thousands with `.`, decimals with `,` — and the money
  * semantics (VB, "zu verschenken", minor units) stay core's job.
  *
- * // core gap: `parseGermanPrice` also mis-reads an UNGROUPED four-digit price,
- * // `"2099 €"` → 209 €, because its first alternative matches three digits and
- * // wins. Neither source prints that form, so nothing here works around it —
- * // but the day one does, this comment is the trail. Reported 2026-08-21.
+ * The four-digit ungrouped form `"2099 €"` was a core bug at the time this
+ * comment was first written and is fixed — `normalize.ts` carries the measured
+ * note. This file said it was still open, in the one place someone would come
+ * looking before building a workaround for it.
  */
 export function germanizeAmount(raw: string): string {
   return raw.replace(
-    /(\d+(?:[ \u00A0]\d{3})*)(?:[.,](\d{1,2}))?/,
+    // `(?!\d)` on the fraction is what keeps this from destroying the one
+    // notation core already reads correctly. Without it `"1.400 EUR"` parsed as
+    // whole `1` plus fraction `40`, printed `1,400 EUR`, and came back as
+    // 1,40 € — wrong by a factor of a thousand, downwards, which is the
+    // direction a price-ascending search floats to the top. Quoka prints its
+    // thousands with spaces today, so nothing triggered it; nothing would have
+    // noticed if the site changed either.
+    /(\d+(?:[ \u00A0]\d{3})*)(?:[.,](\d{1,2})(?!\d))?/,
     (_all, whole: string, fraction?: string) => {
       const grouped = whole.replace(/[ \u00A0]/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
       return fraction === undefined ? grouped : `${grouped},${fraction}`;
@@ -282,11 +295,26 @@ export function germanizeAmount(raw: string): string {
   );
 }
 
-/** Quoka's price cell, via `germanizeAmount`, then core. */
+/**
+ * Quoka's price cell, via `germanizeAmount`, then core.
+ *
+ * `fixed` is downgraded to `unknown`, and only `fixed`. Quoka's result row
+ * prints an amount and NOTHING about how it is meant — measured: zero
+ * occurrences of `detail-price-type`, `Festpreis` or `verhandelbar` as a field
+ * across six search pages. `parseGermanPrice` answers `fixed` for any bare
+ * number, so troedler printed the word "Festpreis" beside every priced Quoka
+ * row, and both detail pages sampled said otherwise: `4 990 EUR` carries
+ * `<span class="detail-price-type">verhandelbar</span>`, `7 EUR` reads
+ * `7 EUR VHB`. Two of two.
+ *
+ * `free` and `negotiable` survive, because those come from words the source
+ * actually printed. markt.de keeps `fixed`: it labels its prices.
+ */
 export function parseQuokaPrice(raw: string | null | undefined): ParsedPrice {
   const text = (raw ?? '').trim();
   if (!text) return { price: null, kind: 'unknown' };
-  return parseGermanPrice(germanizeAmount(text));
+  const parsed = parseGermanPrice(germanizeAmount(text));
+  return parsed.kind === 'fixed' ? { price: parsed.price, kind: 'unknown' } : parsed;
 }
 
 /**

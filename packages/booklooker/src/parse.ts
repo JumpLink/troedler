@@ -24,6 +24,7 @@ import {
   listingKey,
   moneyFromDecimal,
   parseGermanDate,
+  type ParsedDate,
   parseGermanPrice,
   stripContactDetails,
   type Condition,
@@ -378,12 +379,13 @@ export function parseApiPrice(
 }
 
 /** ISO 8601 UTC from either an ISO date or the German notation the core parser knows. */
-function parseDate(raw: string | null, now: Date): string | null {
+function parseDate(raw: string | null, now: Date): ParsedDate | null {
   if (raw === null) return null;
   const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (iso) {
     const d = new Date(`${iso[1]}-${iso[2]}-${iso[3]}T00:00:00.000Z`);
-    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    // A bare `YYYY-MM-DD` names a day; the midnight is ours, not the shop's.
+    return Number.isNaN(d.getTime()) ? null : { iso: d.toISOString(), precision: 'day' };
   }
   return parseGermanDate(raw, now);
 }
@@ -550,6 +552,7 @@ function toListing(rec: BooklookerRecord, ctx: ParseContext): Listing | null {
   // instead of `detail.php`. Its price is the cheapest of the group, so calling
   // it a fixed price would promise something no single seller offers.
   const aggregate = read(rec, FIELDS.articleId) === null;
+  const postedAt = parseDate(read(rec, FIELDS.listedAt), ctx.now);
 
   return {
     key: listingKey(PROVIDER, id),
@@ -572,7 +575,8 @@ function toListing(rec: BooklookerRecord, ctx: ParseContext): Listing | null {
       country: read(rec, FIELDS.country)?.toUpperCase() ?? null,
       distanceKm: null,
     },
-    listedAt: parseDate(read(rec, FIELDS.listedAt), ctx.now),
+    listedAt: postedAt?.iso ?? null,
+    listedAtPrecision: postedAt?.precision ?? null,
     endsAt: null,
     bidCount: null,
     images: image ? [image] : [],

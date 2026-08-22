@@ -53,8 +53,20 @@ function matches(listing: Listing, key: FilterKey, q: SearchQuery): boolean {
       if (listing.delivery === 'unknown' || listing.delivery === 'both') return true;
       return listing.delivery === q.delivery;
     }
-    case 'since':
-      return listing.listedAt === null || listing.listedAt >= (q.since ?? '');
+    case 'since': {
+      if (listing.listedAt === null) return true;
+      if (listing.listedAtPrecision === 'day') {
+        // Midnight is where the value SITS, not when the ad went up: the page
+        // named a calendar day and no clock. Comparing the instant dropped every
+        // ad from the requested day whatever time it was posted — and on Quoka
+        // that form is 6 of 20 rows on page 1 and 20 of 20 on page 100. The
+        // honest question is whether the ad COULD have gone up at or after
+        // `since`, so the day's last instant decides.
+        const dayEnd = Date.parse(listing.listedAt) + 86_400_000 - 1;
+        return dayEnd >= Date.parse(q.since ?? '');
+      }
+      return listing.listedAt >= (q.since ?? '');
+    }
     case 'gtin':
       // Normalised on both sides: `0190295272432` and `190295272432` are one
       // barcode, and comparing the strings made a row survive or not depending

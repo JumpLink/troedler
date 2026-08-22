@@ -24,6 +24,7 @@ export function listing(over: Partial<Listing> & { id: string; provider: Provide
     delivery: 'shipping',
     location: { postalCode: '21762', city: 'Otterndorf', country: 'DE', distanceKm: null },
     listedAt: '2026-08-20T09:00:00.000Z',
+    listedAtPrecision: 'minute',
     endsAt: null,
     bidCount: null,
     images: [],

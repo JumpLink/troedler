@@ -110,6 +110,7 @@ function toListing(raw: JustizDetailRaw, url: string, now: Date, fetchedAt: stri
     // Never printed on the page — and Austria and Germany share the portal, so
     // there is no local convention to fall back on either.
     listedAt: null,
+    listedAtPrecision: null,
     endsAt: endsAtFrom(raw.remainingText, now),
     bidCount: parseBidCount(raw.bidsText),
     images: raw.imagePaths.map((p) => absolutize(HOST, p)).filter((u): u is string => u !== null),

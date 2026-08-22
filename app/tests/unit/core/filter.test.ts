@@ -165,6 +165,39 @@ export default async () => {
       expect(done.listings.map((l) => l.id)).toEqualArray(['p']);
     });
 
+    await it('does not drop a whole day because the source named no clock', async () => {
+      // `listedAt` on a day-precision row is MIDNIGHT — the earliest instant it
+      // could be, not the instant it was. Compared as an instant, `--since
+      // <that day, midday>` removed every ad from that day. On Quoka the
+      // day-only form is 6 of 20 rows on page 1 and 20 of 20 on page 100.
+      const dayOnly = listing({
+        provider: 'quoka',
+        id: 'd',
+        listedAt: '2026-08-20T00:00:00.000Z',
+        listedAtPrecision: 'day',
+      });
+      const q: SearchQuery = { text: 'x', since: '2026-08-20T12:00:00.000Z' };
+      expect(applyPostFilters([dayOnly], q, [], activeFilters(q), { limit: 9 }).listings.length).toBe(1);
+
+      // A row that really IS earlier still goes: the day before is entirely past.
+      const older = listing({
+        provider: 'quoka',
+        id: 'o',
+        listedAt: '2026-08-19T00:00:00.000Z',
+        listedAtPrecision: 'day',
+      });
+      expect(applyPostFilters([older], q, [], activeFilters(q), { limit: 9 }).listings.length).toBe(0);
+
+      // And a minute-precision row is still compared as the instant it is.
+      const exact = listing({
+        provider: 'quoka',
+        id: 'e',
+        listedAt: '2026-08-20T09:00:00.000Z',
+        listedAtPrecision: 'minute',
+      });
+      expect(applyPostFilters([exact], q, [], activeFilters(q), { limit: 9 }).listings.length).toBe(0);
+    });
+
     await it('keeps a price filter live even where nothing is priced', async () => {
       // Price filters DROP the unknown, so they act on any source. They must
       // never be swept into `unenforced` by the rule above.

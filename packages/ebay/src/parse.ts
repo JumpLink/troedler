@@ -201,6 +201,8 @@ export function mapItemSummary(item: EbayItemSummary, ctx: ParseContext): Listin
     // `itemCreationDate`, not `itemOriginDate`: a relist keeps the origin date,
     // so "newly listed" measured against it is years off.
     listedAt: isoOrNull(item.itemCreationDate),
+    // `itemCreationDate` is a full ISO instant, not a calendar day.
+    listedAtPrecision: isoOrNull(item.itemCreationDate) === null ? null : 'minute',
     // Meaningful for an auction. For a fixed-price listing eBay rolls it
     // forward on every renewal, so reporting it as "ends at" is a countdown to
     // nothing.

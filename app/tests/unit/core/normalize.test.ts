@@ -57,6 +57,32 @@ export default async () => {
       // quietly damage every listing title it touched.
       expect(stripContactDetails('Metabo BAS 318 für 289 Euro')).toBe('Metabo BAS 318 für 289 Euro');
     });
+
+    await it('leaves dates and opening hours alone', async () => {
+      // Measured over 132 live Quoka text fields: the scrubber fired exactly
+      // once, on a DATE, and that was its only effect on the whole source —
+      // one activation, one false positive, zero real numbers. Over-scrubbing
+      // is not the harmless side of this trade: a redactor that only ever
+      // destroys dates teaches the reader to distrust the […] that does cover
+      // a phone number.
+      expect(stripContactDetails('Die Kleinen wurden am 06.05.2026 geboren.')).toBe(
+        'Die Kleinen wurden am 06.05.2026 geboren.',
+      );
+      expect(stripContactDetails('Geöffnet 9.00 - 14.00 Uhr')).toBe('Geöffnet 9.00 - 14.00 Uhr');
+      expect(stripContactDetails('Abzuholen ab 30.09.2026, Termine 08:00-16:00')).toBe(
+        'Abzuholen ab 30.09.2026, Termine 08:00-16:00',
+      );
+    });
+
+    await it('still catches a number written with dots', async () => {
+      // The discriminator for the rule above: dropping the dot from the
+      // separator set would have been the cheap fix and would have opened a
+      // hole exactly here.
+      expect(stripContactDetails('Rückfragen an 05241.869.2238').includes('869')).toBe(false);
+      // And the +49 prefix is consumed with the number, not left standing
+      // beside the redaction.
+      expect(stripContactDetails('Anruf: +49 (0)176 1234567 genügt')).toBe('Anruf: […] genügt');
+    });
   });
 
   await describe('parseGermanPrice', async () => {
@@ -100,39 +126,51 @@ export default async () => {
     const now = new Date('2026-08-21T12:00:00.000Z'); // 14:00 in Berlin, CEST
 
     await it('reads "Heute" as a wall clock in the marketplace timezone', async () => {
-      expect(parseGermanDate('Heute, 17:08', now)).toBe('2026-08-21T15:08:00.000Z');
+      expect(parseGermanDate('Heute, 17:08', now)?.iso).toBe('2026-08-21T15:08:00.000Z');
     });
 
     await it('resolves "Gestern" to the previous day THERE', async () => {
-      expect(parseGermanDate('Gestern, 14:29', now)).toBe('2026-08-20T12:29:00.000Z');
+      expect(parseGermanDate('Gestern, 14:29', now)?.iso).toBe('2026-08-20T12:29:00.000Z');
     });
 
     await it('uses the calendar day of the marketplace, not of the machine', async () => {
       // 23:30 UTC is already the 22nd in Berlin. A reader in UTC who resolved "Heute" against
       // its own date would be a day behind for half an hour every night.
       const lateEvening = new Date('2026-08-21T23:30:00.000Z');
-      expect(parseGermanDate('Heute, 08:00', lateEvening)).toBe('2026-08-22T06:00:00.000Z');
+      expect(parseGermanDate('Heute, 08:00', lateEvening)?.iso).toBe('2026-08-22T06:00:00.000Z');
     });
 
     await it('applies the right offset on both sides of the DST change', async () => {
       // Summer is +02:00, winter +01:00. An implementation with a hardcoded offset — or one that
       // used the machine's — gets exactly one of these two right.
-      expect(parseGermanDate('26.04.2026', now)).toBe('2026-04-25T22:00:00.000Z');
-      expect(parseGermanDate('15.01.2026', now)).toBe('2026-01-14T23:00:00.000Z');
+      expect(parseGermanDate('26.04.2026', now)?.iso).toBe('2026-04-25T22:00:00.000Z');
+      expect(parseGermanDate('15.01.2026', now)?.iso).toBe('2026-01-14T23:00:00.000Z');
     });
 
     await it('crosses a month boundary backwards for "Gestern"', async () => {
       const firstOfMonth = new Date('2026-09-01T10:00:00.000Z');
-      expect(parseGermanDate('Gestern, 09:15', firstOfMonth)).toBe('2026-08-31T07:15:00.000Z');
+      expect(parseGermanDate('Gestern, 09:15', firstOfMonth)?.iso).toBe('2026-08-31T07:15:00.000Z');
     });
 
     await it('reads an explicit dd.mm.yyyy with a time', async () => {
-      expect(parseGermanDate('26.04.2026, 09:30', now)).toBe('2026-04-26T07:30:00.000Z');
+      expect(parseGermanDate('26.04.2026, 09:30', now)?.iso).toBe('2026-04-26T07:30:00.000Z');
     });
 
     await it('returns null for something it does not understand', async () => {
       expect(parseGermanDate('irgendwann', now)).toBe(null);
       expect(parseGermanDate(null, now)).toBe(null);
+    });
+
+    await it('says whether the page named a clock or only a day', async () => {
+      // Once it is an instant, midnight-because-the-page-said-so and
+      // midnight-because-that-is-when look identical — and `--since <midday>`
+      // then drops every ad from that day whatever time it went up.
+      expect(parseGermanDate('Heute, 17:08', now)?.precision).toBe('minute');
+      expect(parseGermanDate('26.04.2026, 09:30', now)?.precision).toBe('minute');
+      expect(parseGermanDate('26.04.2026', now)?.precision).toBe('day');
+      // "Heute" with no clock is a day, and it lands on midnight — the case
+      // that made the difference visible in the first place.
+      expect(parseGermanDate('Heute', now)?.precision).toBe('day');
     });
   });
 

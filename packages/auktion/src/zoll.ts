@@ -238,7 +238,9 @@ function toListing(card: ZollCardRaw, now: Date, fetchedAt: string): Listing | n
     delivery: /abholung/i.test(card.deliveryText ?? '') ? 'pickup' : 'unknown',
     // The search page never names a country; only the detail page's JSON-LD does.
     location: splitGermanLocation(card.locationText, null),
+    // The result card prints no start date at all — not a coarse one, none.
     listedAt: null,
+    listedAtPrecision: null,
     endsAt: endsAtFrom(card.remainingText, now),
     bidCount: parseBidCount(card.bidsText),
     images: [largestImage(card.thumbnailPath)].filter((u): u is string => u !== null),
@@ -293,6 +295,8 @@ function detailToListing(raw: ZollDetailRaw, fallbackUrl: string, now: Date, fet
     location: splitGermanLocation(raw.locationText, raw.country),
     // `availabilityStarts` out of the JSON-LD, which carries a real UTC offset.
     listedAt: raw.startsAtIso ? new Date(raw.startsAtIso).toISOString() : null,
+    // JSON-LD carries a full clock with an offset, so this is the real instant.
+    listedAtPrecision: raw.startsAtIso ? 'minute' : null,
     // The printed end plus the offset the JSON-LD carries — exact, and the same
     // on every run. The countdown stays as the fallback for a page that lost
     // its JSON-LD, where a value drifting by seconds beats no value at all.

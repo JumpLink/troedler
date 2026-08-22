@@ -27,6 +27,8 @@ import {
   createMarktDeProvider,
   createQuokaProvider,
   germanizeAmount,
+  parseMarktPrice,
+  parseQuokaPrice,
   marktKeywordPath,
   marktRadiusStep,
   marktScopeFromEnv,
@@ -768,6 +770,38 @@ export default async () => {
       expect(germanizeAmount('9999.9 EUR')).toBe('9.999,9 EUR');
       expect(germanizeAmount('60 EUR')).toBe('60 EUR');
       expect(germanizeAmount('zu verschenken')).toBe('zu verschenken');
+    });
+
+    await it('lässt die deutsche Punkt-Tausenderform in Ruhe, statt sie zu zerstören', async () => {
+      // The wrapper that exists to protect core's parser used to break the ONE
+      // notation core already read correctly: `1.400 EUR` became `1,400 EUR`
+      // and came back as 1,40 € — wrong by a factor of a thousand, downwards,
+      // which is the direction a price-ascending search floats to the top.
+      // Quoka prints spaces today, so nothing triggered it and nothing would
+      // have noticed if the site changed.
+      expect(germanizeAmount('1.400 EUR')).toBe('1.400 EUR');
+      expect(germanizeAmount('1.400,00 EUR')).toBe('1.400,00 EUR');
+      expect(parseQuokaPrice('1.400 EUR').price?.minor).toBe(140000);
+      expect(parseQuokaPrice('1.400,50 EUR').price?.minor).toBe(140050);
+      // The forms that made the wrapper necessary still work.
+      expect(parseQuokaPrice('2 099 EUR').price?.minor).toBe(209900);
+      expect(parseQuokaPrice('1400.0 EUR').price?.minor).toBe(140000);
+    });
+
+    await it('nennt keinen Festpreis, wo die Quelle nichts über den Preis sagt', async () => {
+      // Measured: zero occurrences of `detail-price-type`, `Festpreis` or
+      // `verhandelbar` as a field across six Quoka search pages, while both
+      // sampled detail pages said otherwise — `4 990 EUR` carries
+      // `verhandelbar`, `7 EUR` reads `7 EUR VHB`. Two of two. `fixed` is what
+      // core answers for any bare number, and troedler printed the word
+      // "Festpreis" beside every priced Quoka row.
+      expect(parseQuokaPrice('60 EUR').kind).toBe('unknown');
+      expect(parseQuokaPrice('2 099 EUR').kind).toBe('unknown');
+      // Words the source really printed survive.
+      expect(parseQuokaPrice('zu verschenken').kind).toBe('free');
+      expect(parseQuokaPrice('60 EUR VB').kind).toBe('negotiable');
+      // And markt.de keeps `fixed`, because markt.de labels its prices.
+      expect(parseMarktPrice('2.040 €', 'Festpreis').kind).toBe('fixed');
     });
 
     await it('rechnet „heute", „gestern" und den Monatsnamen ohne Jahr aus', async () => {
