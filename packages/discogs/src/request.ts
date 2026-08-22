@@ -69,19 +69,19 @@ export interface SearchUrlInput {
  * abstractions with no marketplace behind them, and returning them would be
  * returning things that cannot be bought.
  *
- * // gjsify gap (unfixed, measured 2026-08-21 on gjs 1.88.1 / gjsify 0.41.0):
- * // a `URL` is IMMUTABLE under GJS. Every setter (`search`, `pathname`, …)
- * // throws "setting getter-only property", and — the half that actually bites
- * // — `url.searchParams` hands back a DETACHED copy: `set`/`append`/`delete`
- * // report success and are silently discarded, so `url.toString()` comes back
- * // without a query string at all. Building this URL through `url.searchParams`
- * // therefore sent an unparameterised `/database/search` on the one runtime
- * // troedler actually ships on, while Node stayed green.
- * //
- * // So the query is assembled as a standalone `URLSearchParams` and
- * // concatenated — measured byte-identical on both runtimes, and the shape
- * // every other adapter here already uses. Report upstream to gjsify; until
- * // the setters land, `url.searchParams.set` is unusable in this project.
+ * The query is assembled as a standalone `URLSearchParams` and concatenated
+ * rather than mutated through `url.searchParams`. That began as a workaround —
+ * under gjsify ≤ 0.41.0 a `URL` was immutable, every setter threw "setting
+ * getter-only property", and `url.searchParams` handed back a DETACHED copy
+ * whose `set`/`append`/`delete` reported success and were silently discarded.
+ * This very URL therefore went out without a query string on the one runtime
+ * troedler ships on, and `/database/search` answered with 34.7 million rows of
+ * everything, while Node stayed green.
+ *
+ * Fixed at the core (gjsify PR #1245, released in 0.42.0) and re-measured here
+ * at the bump — 13 of 13 checks green on 0.42.0, 6 of them red on 0.41.0. The
+ * shape stays anyway: building a query explicitly is what it should have been,
+ * and it needs no mutation to be correct.
  */
 export function buildSearchUrl(input: SearchUrlInput): string {
   const params = new URLSearchParams();

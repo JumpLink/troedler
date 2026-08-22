@@ -192,7 +192,7 @@ canonical — a link taken from it sends the reader to somebody else's lot.
 
 **Everything is entity-encoded, including punctuation.** `u&period;a&period;`,
 `0&comma;01`, `20&colon;00&colon;00`, `mb7295&lowbar;pic1w`, `&NewLine;`,
-`H&amp;amp&semi;M`. *Measured:* `htmlparser2` decodes all of them, which is one
+`H&amp;amp&semi;M`. *Measured:* the shared parser decodes all of them, which is one
 concrete reason `@troedler/html` exists — `@gjsify/domparser` does not decode
 entities at all today.
 

@@ -22,7 +22,6 @@ import {
   text,
   textOf,
   type HtmlElement,
-  type HtmlNode,
 } from '@troedler/html';
 import { parseFailed } from './shared.ts';
 import type { JustizDetailRaw, ZollCardRaw, ZollDetailRaw } from './types.ts';
@@ -35,11 +34,15 @@ import type { JustizDetailRaw, ZollCardRaw, ZollDetailRaw } from './types.ts';
  * later value by one, and a location landing in the payment field is exactly
  * the kind of wrong-but-plausible result this project is built to avoid.
  */
-function dlPairs(scope: HtmlNode): Map<string, string> {
+function dlPairs(scope: HtmlElement): Map<string, string> {
   const out = new Map<string, string>();
   let term: string | null = null;
   for (const node of queryAll(scope, 'dt, dd')) {
-    if (node.tagName === 'dt') {
+    // `localName`, not `tagName`: the DOM spells `tagName` UPPERCASE for HTML
+    // elements. The previous parser answered `'dt'` here, this one answers
+    // `'DT'`, and the comparison silently stopped matching — every `<dt>` was
+    // read as a `<dd>` with no term, so the whole infobox came back empty.
+    if (node.localName === 'dt') {
       term = text(node).replace(/:\s*$/, '').trim().toLowerCase();
     } else if (term !== null) {
       if (!out.has(term)) out.set(term, text(node));
@@ -70,7 +73,7 @@ function idFromPath(path: string | null): string | null {
  * The site's own count, and the only place it appears. It vanishes entirely on
  * a zero-hit page, which is why its absence is never read as an error.
  */
-function totalFromBreadcrumb(doc: HtmlNode): number | null {
+function totalFromBreadcrumb(doc: HtmlElement): number | null {
   const m = textOf(doc, 'li.breadcrumb-item.active').match(/([\d.]+)\s*Treffer/);
   if (!m) return null;
   const n = Number.parseInt(m[1].replaceAll('.', ''), 10);
@@ -146,7 +149,7 @@ export function parseZollSearchPage(html: string, provider: string): ZollSearchP
 }
 
 /** The schema.org `Product` block, when the page carries one. */
-function productJsonLd(doc: HtmlNode): Record<string, unknown> | null {
+function productJsonLd(doc: HtmlElement): Record<string, unknown> | null {
   for (const script of queryAll(doc, 'script[type="application/ld+json"]')) {
     try {
       const data = JSON.parse(text(script)) as Record<string, unknown>;

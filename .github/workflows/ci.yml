@@ -69,13 +69,6 @@ jobs:
       - name: Format check
         run: gjsify workspace troedler-cli format:check
 
-      # A grep, because the thing it catches is invisible to everything else:
-      # `url.searchParams.set()` is a silent no-op under GJS and correct under
-      # Node, so the type check, the tests and a careful read all pass while the
-      # request goes out without its query string.
-      - name: Guard against URL mutation
-        run: node scripts/guard-url-mutation.mjs
-
       # Also a grep, and for a reason no test can cover: a test proves a kernel
       # function WORKS, never that anything USES it. `groupByIdentity` and
       # `bestOf` — the cross-source grouping this project exists for — had a

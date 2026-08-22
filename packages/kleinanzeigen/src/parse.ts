@@ -36,7 +36,6 @@ import {
   text,
   textOf,
   type HtmlElement,
-  type HtmlNode,
 } from '@troedler/html';
 
 import { absolute, listingIdFrom } from './url.ts';
@@ -317,7 +316,7 @@ function idFromBox(raw: string): string | null {
 }
 
 /** The ad page's attribute list: `Art/Herren`, `Typ/Rennräder`, `Zustand/Sehr Gut`. */
-export function parseDetails(scope: HtmlNode): Map<string, string> {
+export function parseDetails(scope: HtmlElement): Map<string, string> {
   const out = new Map<string, string>();
   for (const li of queryAll(scope, VIP.detail)) {
     const value = textOf(li, VIP.detailValue);

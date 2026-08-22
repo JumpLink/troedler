@@ -258,8 +258,11 @@ export default async () => {
       expect(err.kind).toBe('parse-failed');
       expect(err.message).toMatch(/DetailLinkUrl/);
       // Die Elementzahl gehört in die Meldung: sie unterscheidet „nichts
-      // empfangen" von „empfangen, aber anders gebaut".
-      expect(err.message).toMatch(/3 Elemente/);
+      // empfangen" von „empfangen, aber anders gebaut". Sechs, nicht drei: der
+      // HTML5-Parser legt das implizite `html > head > body` um die Nutzlast.
+      // Die Zahl ist ein Diskriminator, kein Vertrag — was zählt, ist dass sie
+      // größer als null ist und mit der Antwort wächst.
+      expect(err.message).toMatch(/6 Elemente/);
     });
 
     await it('nennt es beim Namen, wenn der Deep-Link zum Attribut wird', async () => {

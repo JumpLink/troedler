@@ -12,7 +12,6 @@
   "scripts": {
     "check": "gjsify foreach -A check",
     "lint": "gjsify foreach -A lint",
-    "guard": "node scripts/guard-url-mutation.mjs",
     "format": "gjsify workspace troedler-cli format",
     "format:check": "gjsify workspace troedler-cli format:check",
     "build": "gjsify workspace troedler-cli build",

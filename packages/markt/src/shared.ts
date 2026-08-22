@@ -135,13 +135,12 @@ export function cleanDescription(raw: string | null | undefined): string | null 
  * two searches must not produce two different URLs, and therefore two different
  * `key`s, for one ad.
  *
- * // gjsify gap (unfixed): the URL class under GJS exposes GETTERS only.
- * // `url.search = ''` throws `TypeError: setting getter-only property
- * // "search"`, and so does every other setter — measured 2026-08-21 on
- * // gjs 1.88.1 for `search`, `hash`, `pathname`, `href` and `host`. Composing
- * // the result from `origin` + `pathname` needs no setter and is what makes
- * // this adapter work on both runtimes; the mutating version parsed every page
- * // correctly under Node and returned zero rows under GJS.
+ * Composed from `origin` + `pathname` rather than by clearing `url.search`.
+ * That began as a workaround — under gjsify ≤ 0.41.0 the URL class exposed
+ * getters only and `url.search = ''` threw — and the mutating version parsed
+ * every page correctly under Node while returning zero rows under GJS. The
+ * setters work as of 0.42.0 (measured, not assumed), and this shape stays: it
+ * says what it builds instead of subtracting from something else.
  */
 export function canonicalUrl(origin: string, path: string | null | undefined): string | null {
   const p = (path ?? '').trim();

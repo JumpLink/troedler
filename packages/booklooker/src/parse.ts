@@ -34,7 +34,7 @@ import {
   type PriceKind,
   type SellerType,
 } from '@troedler/core';
-import { parseHtml, query, queryAll, text, type HtmlElement, type HtmlNode } from '@troedler/html';
+import { isElement, parseHtml, query, queryAll, text, type HtmlElement } from '@troedler/html';
 import type { BooklookerEnvelope, BooklookerRecord } from './types.ts';
 
 export const PROVIDER = 'booklooker' as const;
@@ -228,11 +228,14 @@ export function recordsFrom(returnValue: unknown): BooklookerRecord[] {
 const DEEP_LINK_TAG = 'detaillinkurl';
 
 function recordsFromMarkup(markup: string): BooklookerRecord[] {
-  // Parsed through the shared façade, in HTML mode: it lower-cases element
-  // names (`<DetailLinkUrl>` → `detaillinkurl`) and decodes entities, which is
-  // all this payload needs. A real XML mode would be better — see the note in
-  // docs/quellen/booklooker.de.md — but a second parser in this package would
-  // be worse than a slightly wrong-moded shared one.
+  // HTML mode, and now by decision rather than by compromise. The shared parser
+  // reads the MIME type since gjsify 0.42.0, so `text/xml` is one argument away
+  // — and it is the wrong argument here: XML element names are CASE-SENSITIVE,
+  // so `<DetailLinkUrl>` would have to be matched in exactly that spelling. The
+  // HTML path folds names to lower case, which is what makes the deep-link
+  // lookup survive a casing change in a shape this project has never seen live
+  // (the live `/search` answers with JSON inside the envelope). The cost is an
+  // implied `html > head > body` around the payload, which nothing here reads.
   const doc = parseHtml(markup);
   const anchors = queryAll(doc, DEEP_LINK_TAG);
 
@@ -249,10 +252,10 @@ function recordsFromMarkup(markup: string): BooklookerRecord[] {
 
   const items: HtmlElement[] = [];
   for (const anchor of anchors) {
-    const parent = anchor.parent;
+    const parent = anchor.parentNode;
     // A deep link with no element around it is a flat document; then the whole
     // document is the one record, which is still better than dropping it.
-    items.push(parent && 'name' in parent ? (parent as HtmlElement) : (doc as unknown as HtmlElement));
+    items.push(isElement(parent) ? parent : doc);
   }
   const unique = [...new Set(items)];
 
@@ -269,11 +272,14 @@ function recordsFromMarkup(markup: string): BooklookerRecord[] {
   return unique.map(recordFromElement);
 }
 
-function recordFromElement(item: HtmlNode): BooklookerRecord {
+function recordFromElement(item: HtmlElement): BooklookerRecord {
   const out: Record<string, string | string[]> = {};
   for (const el of queryAll(item, '*')) {
     if (el === item) continue;
-    add(out, el.name, text(el));
+    // `localName`, lowercased by the parser — the field lookup below is
+    // case-insensitive anyway, and the old parser's `name` was the same thing
+    // under a different spelling.
+    add(out, el.localName, text(el));
   }
   return out;
 }

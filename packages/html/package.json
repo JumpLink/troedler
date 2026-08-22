@@ -15,9 +15,6 @@
     "src"
   ],
   "dependencies": {
-    "css-select": "^7.0.0",
-    "domhandler": "^6.0.1",
-    "domutils": "^4.0.2",
-    "htmlparser2": "^12.0.0"
+    "@gjsify/domparser": "0.42.0"
   }
 }

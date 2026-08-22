@@ -154,19 +154,32 @@ MCP server via **run_in_background** when driving it.
 gjsify is a first-party dependency, not vendored third-party code. A missing capability gets fixed
 in the `gjsify/gjsify` submodule with a test, and troedler picks it up on a version bump.
 
-The live one: **`@gjsify/domparser` is an XML parser** — no HTML5 tree construction, no entity
-decoding, and `querySelectorAll` matches tag names only. That is why `@troedler/html` wraps
-`htmlparser2` + `css-select` (measured: identical results on GJS and Node). The upstream fix is in
-progress; when it lands, `@troedler/html` becomes a thin adapter and the three npm dependencies
-come out. The façade is narrow precisely so that is one file's work.
+**Two gaps went this way and both are closed as of gjsify 0.42.0** — worth keeping because they
+are what the rule is for, and because both bit on GJS while Node stayed green:
+
+- **`URL` was immutable.** Every setter threw, and `url.searchParams` handed back a DETACHED copy
+  whose `set`/`append`/`delete` reported success and were discarded. Discogs' `/database/search`
+  therefore went out with no query at all and answered with 34.7 million rows of everything.
+  Fixed upstream (PR #1245).
+- **`@gjsify/domparser` was an XML parser.** No HTML5 tree construction, no entity decoding, and
+  `querySelectorAll` matched tag names only — on a real 329 KB results page, `.aditem` → 0 hits.
+  `@troedler/html` wrapped three npm parsers until PR #1250 landed an HTML5 tokenizer, a tree
+  builder and a CSS Selectors 4 engine. The façade is narrow precisely so that swap was one file.
 
 Unavoidable shims carry **one of two markers, and they mean opposite things at bump time**:
 
 - `// fixed upstream in gjsify: …` — the fix LANDED. Delete the shim at the next bump.
 - `// gjsify gap (unfixed, <PR>): …` — no upstream fix yet. The shim is **load-bearing**.
 
-**Neither marker is a substitute for measuring.** A bump re-measures the behaviour and believes
-the result, not the note.
+**Neither marker is a substitute for measuring.** A bump re-measures the behaviour and believes the
+result, not the note — and the measurement has to be able to FAIL. For the URL fix that meant
+running the same 13-check probe against 0.41.0 (6 red) and 0.42.0 (all green); for the parser swap
+it meant running both parsers over the same live pages and diffing what the adapters made of them
+(byte-identical over 10 auction cards, one full detail page and 20 classified ads).
+
+Watch for spec differences the old library papered over. The one that bit: `tagName` is UPPERCASE
+in the DOM and was lowercase in `domhandler`, so `node.tagName === 'dt'` silently stopped matching
+and a whole `<dl>` came back empty. Prefer `localName`.
 
 `app/src/frontends/mcp/runtime.ts` is a **verbatim copy** of postbote's, which carries it as an
 extraction candidate for `@gjsify/mcp`. This is the second copy, so the duplication rule now
