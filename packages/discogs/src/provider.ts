@@ -66,9 +66,14 @@ const AUTHENTICATED_PER_MINUTE = 60;
  * and measured: the first response of a fresh window reports
  * `remaining: 25, used: 0`, i.e. the headers describe the window BEFORE this
  * request was counted, so acting on `remaining` at face value overspends by
- * exactly one. One leaves room for a following `quota()`. One is margin,
- * because the window is a moving average shared with anything else on this
- * machine using the same token.
+ * exactly one. The rest is margin, and it needs to be: measured 2026-08-22,
+ * **31 requests in 20 seconds were answered while Discogs reported 12 used.**
+ * The header is a rolling, apparently edge-local average, not a ledger — so
+ * `remaining` is the best signal available and not a guarantee, and the code
+ * that spends it must be able to be wrong about it without harm.
+ *
+ * (The reserve's original justification named "room for a following `quota()`".
+ * There is none: one CLI command is one process, so nothing follows.)
  */
 const BUDGET_RESERVE = 3;
 
@@ -194,7 +199,12 @@ export class DiscogsProvider implements MarketProvider {
     let throttled: string | null = null;
 
     for (const row of parsed.rows) {
-      if (stats.size >= budget) break;
+      // Against ATTEMPTS, not against successes. Discogs charges for a 404 the
+      // same as for a hit ("Release not found." — measured), and the old
+      // condition read `stats.size`: with a budget of 2 and a run of 404s it
+      // would have sent one request per row and stopped at none of them. The
+      // budget is a promise about requests, so it has to be counted in requests.
+      if (attempted >= budget) break;
       if (typeof row.id !== 'number' || !Number.isFinite(row.id)) continue;
 
       attempted += 1;
@@ -206,7 +216,7 @@ export class DiscogsProvider implements MarketProvider {
         // Re-read the budget from every response rather than trusting the one
         // computed up front: the window is a moving average and something else
         // may be spending it at the same time.
-        budget = Math.min(budget, stats.size + this.#enrichmentBudget(priced.rateLimit, wanted));
+        budget = Math.min(budget, attempted + this.#enrichmentBudget(priced.rateLimit, wanted));
       } catch (err) {
         if (err instanceof ProviderError && (err.kind === 'rate-limited' || err.kind === 'refused')) {
           // Real listings are already in hand. Discarding them because the next
@@ -231,7 +241,13 @@ export class DiscogsProvider implements MarketProvider {
       );
     }
 
-    const mapped = mapReleases(parsed.rows, (id) => stats.get(id), this.#now().toISOString());
+    const mapped = mapReleases(parsed.rows, (id) => stats.get(id), this.#now().toISOString(), {
+      // A release carries several valid barcodes and the DTO has one slot.
+      // Reporting the one the user searched by is the only non-arbitrary
+      // choice available, and without it two of five rows of a `--gtin` search
+      // came back naming a different barcode than the one they matched on.
+      wantedGtin: query.gtin ?? null,
+    });
 
     // The "green and empty" guard: rows arrived, and not one of them had the
     // shape this adapter reads. That is a changed response, not a miss.
@@ -251,9 +267,19 @@ export class DiscogsProvider implements MarketProvider {
     if (failed > 0)
       warnings.push(`${failed} Preisabfragen schlugen fehl; diese Releases fehlen im Ergebnis.`);
     if (throttled !== null) warnings.push(`Preisabfragen abgebrochen: ${throttled}`);
-    if (mapped.withoutOffers > 0) {
+    if (mapped.withoutOffers > mapped.blocked) {
       warnings.push(
-        `${mapped.withoutOffers} von ${stats.size} geprüften Releases werden derzeit auf dem Discogs-Marktplatz nicht angeboten.`,
+        `${mapped.withoutOffers - mapped.blocked} von ${stats.size} geprüften Releases werden derzeit auf dem Discogs-Marktplatz nicht angeboten.`,
+      );
+    }
+    // "Nobody is selling one right now" and "selling one is not allowed" are
+    // different answers, and only the first invites coming back later. Discogs
+    // models the second (`blocked_from_sale`, set on bootlegs and takedowns);
+    // it was read nowhere, so five blocked releases were reported as "derzeit
+    // nicht angeboten".
+    if (mapped.blocked > 0) {
+      warnings.push(
+        `${mapped.blocked} Release(s) dürfen auf dem Discogs-Marktplatz nicht verkauft werden (Bootleg oder Takedown) — daran ändert sich auch später nichts.`,
       );
     }
     if (stats.size < parsed.rows.length) {
@@ -327,8 +353,15 @@ export class DiscogsProvider implements MarketProvider {
    *
    * Prefers the reading taken from the last real response; only when nothing
    * has been fetched yet does it spend one request of its own on the smallest
-   * 200 the API has (92 bytes, measured). `resetAt` is derived from Discogs'
-   * documented rule, not from a header — there is none.
+   * 200 the API has (92 bytes, measured) — so in the CLI, where one command is
+   * one process, `quota` always costs a request of its own.
+   *
+   * **What the number is NOT: a count of requests you may still send.** Measured
+   * 2026-08-22, 31 requests in 20 seconds were answered while Discogs reported
+   * 12 used. It is a rolling average, and it appears to be edge-local. `resetAt`
+   * follows Discogs' documented 60-seconds-after-the-last-request rule and is
+   * therefore always about a minute out, because this call just made one; the
+   * window slides, it does not reset.
    */
   async quota(
     signal?: AbortSignal,
@@ -361,7 +394,13 @@ export class DiscogsProvider implements MarketProvider {
     this.#rateLimitAt = this.#now().getTime();
   }
 
-  /** How many price lookups this window still affords, never more than asked for. */
+  /**
+   * How many price lookups this window still affords, never more than asked for.
+   *
+   * A best estimate, not a budget the remote honours — see `BUDGET_RESERVE`.
+   * The loop that spends it counts ATTEMPTS, so being wrong here costs at most
+   * a 429, which ends the attempt with a plain message rather than a retry.
+   */
   #enrichmentBudget(reading: DiscogsRateLimit, wanted: number): number {
     const remaining = reading.remaining ?? this.#rateLimit.remaining ?? this.#tierLimit();
     return Math.max(0, Math.min(wanted, remaining - BUDGET_RESERVE));

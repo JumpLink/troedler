@@ -198,12 +198,92 @@ export default async () => {
       expect(isValidGtin('')).toBe(false);
     });
 
-    await it('bevorzugt die längere Schreibweise, wenn beide gültig sind', async () => {
-      expect(extractGtin(['888837168618', '5099969959929'])).toBe('5099969959929');
+    await it('meldet die GTIN, nach der gesucht wurde, wenn die Zeile sie trägt', async () => {
+      // Measured on `--gtin 5099996601419`: two of five rows came back naming
+      // `0190295272432` — a different, equally real barcode on the same release
+      // — because the rule was "longest wins" and the padded UPC-A is longer.
+      // The row the user searched for then looked like it did not carry the
+      // code it had matched on, and `identityKey` grouped it with nothing.
+      const both = ['0190295272432', '5099996601419'];
+      expect(extractGtin(both, '5099996601419')).toBe('5099996601419');
+      // Padded and bare are ONE barcode, so either spelling of the wish finds it.
+      expect(extractGtin(both, '190295272432')).toBe('0190295272432');
+    });
+
+    await it('nimmt sonst die Reihenfolge der Quelle, statt die Polsterung zu bevorzugen', async () => {
+      // Without a wish there is no non-arbitrary choice — the DTO has one slot
+      // and the release genuinely carries several. Source order at least is the
+      // source's own priority; "longest" was a guess about specificity that
+      // selected the zero-padding instead.
+      expect(extractGtin(['888837168618', '5099969959929'])).toBe('888837168618');
+      // A wish that this row does not carry changes nothing.
+      expect(extractGtin(['888837168618'], '5099969959929')).toBe('888837168618');
+      // And an invalid check digit is still no identity at all.
+      expect(extractGtin(['10 6305058 1 320'])).toBe(null);
     });
   });
 
   await describe('Discogs · Mapping', async () => {
+    await it('glaubt der Zeile, nicht der URL, dass sie ein Release ist', async () => {
+      // Every row carries `type`, and the adapter never read it — it relied on
+      // `type=release` being in the URL it built. That is exactly the assumption
+      // that fell away when `searchParams.set()` turned out to be a silent
+      // no-op under GJS: the query never left the process, `/database/search`
+      // answered with everything, and nothing here could have noticed that the
+      // ids were artists being priced as records.
+      const m = mapReleases(
+        [row({ type: 'artist' }), row({ id: 99, type: 'release' })],
+        () => stats(),
+        FETCHED_AT,
+      );
+      expect(m.listings).toHaveLength(1);
+      expect(m.listings[0].id).toBe('99');
+      expect(m.unmappable).toBe(1);
+    });
+
+    await it('trennt "verkauft gerade niemand" von "darf nicht verkauft werden"', async () => {
+      // Measured on five unofficial releases: `blocked_from_sale: true` with
+      // `num_for_sale: null` — and `null`, not the `0` the type comment claimed.
+      // Discogs bans the sale of these permanently, so "derzeit nicht
+      // angeboten" invited coming back for something that will never be there.
+      const m = mapReleases(
+        [row({ id: 1 }), row({ id: 2 })],
+        (id) =>
+          id === 1
+            ? { num_for_sale: null as unknown as number, lowest_price: null, blocked_from_sale: true }
+            : { num_for_sale: 0, lowest_price: null, blocked_from_sale: false },
+        FETCHED_AT,
+      );
+      expect(m.listings).toHaveLength(0);
+      expect(m.withoutOffers).toBe(2);
+      expect(m.blocked).toBe(1);
+    });
+
+    await it('behält im Titel, was die Pressungen unterscheidet', async () => {
+      // Measured over five rows of one search: the first three format terms
+      // were identical five times out of five — `Vinyl, LP, Album` — while what
+      // told the editions apart sat behind them and was cut. The qualifier
+      // exists BECAUSE the edition is the identity on this source.
+      const reissue = row({
+        format: ['Vinyl', 'LP', 'Album', 'Limited Edition', 'Reissue', 'Remastered'],
+      });
+      const title = mapReleases([reissue], () => stats(), FETCHED_AT).listings[0].title;
+      expect(title.includes('Limited Edition')).toBe(true);
+      // And it still says what the object is.
+      expect(title.includes('Vinyl')).toBe(true);
+      expect(title.includes('1979')).toBe(true);
+    });
+
+    await it('erfindet keine Währung, wenn Discogs keine nennt', async () => {
+      // The default this used to carry is the very thing the source record
+      // warns about for the release endpoint: labelling dollars as euros. All
+      // twelve measured responses named EUR, so the path never fired — which is
+      // exactly why nothing would have caught it.
+      const m = mapReleases([row()], () => ({ num_for_sale: 3, lowest_price: { value: 9.99 } }), FETCHED_AT);
+      expect(m.listings).toHaveLength(0);
+      expect(m.withoutOffers).toBe(1);
+    });
+
     await it('macht aus Release plus Aggregat ein Listing mit Ab-Preis', async () => {
       const m = mapReleases([row()], () => stats(), FETCHED_AT);
       expect(m.listings).toHaveLength(1);
@@ -519,6 +599,29 @@ export default async () => {
       // Der Diskriminator: ohne die Budgetprüfung wären es 5 Treffer und keine
       // Warnung — und der nächste Aufruf liefe in ein 429.
       expect(res.warnings.some((w) => w.includes('3'))).toBe(true);
+    });
+
+    await it('rechnet das Budget in Anfragen, nicht in gelungenen Preisabfragen', async () => {
+      // Discogs charges for a 404 exactly as for a hit — "Release not found."
+      // is a measured, documented answer. The stop condition read `stats.size`,
+      // the count of SUCCESSES, so a run of 404s never reached it: a budget of
+      // three would have sent one request per row, all five of them, and only
+      // stopped when the rows ran out. The window it was protecting is a moving
+      // average, so overspending it is how a 403 arrives.
+      const rows = [row({ id: 1 }), row({ id: 2 }), row({ id: 3 }), row({ id: 4 }), row({ id: 5 })];
+      const r = rig((url) =>
+        url.includes('/database/search')
+          ? { body: searchBody(rows), remaining: 6 }
+          : { status: 404, body: { message: 'Release not found.' }, remaining: 6 },
+      );
+      const err = await caught(() =>
+        createDiscogsProvider({ http: r.http, env: {}, enabled: true }).search({ text: 'a', limit: 5 }),
+      );
+      // Every price lookup failed, so the endpoint is reported as broken — the
+      // guard that already existed. What this test pins is the COST of getting
+      // there: one search plus three attempts, not one search plus five.
+      expect(err.kind).toBe('remote-error');
+      expect(r.calls).toHaveLength(4);
     });
 
     await it('meldet ein ausgeschöpftes Fenster als rate-limited, nicht als leeres Ergebnis', async () => {

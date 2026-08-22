@@ -24,6 +24,7 @@
 import {
   listingKey,
   money,
+  normalizeGtin,
   ProviderError,
   stripContactDetails,
   type Listing,
@@ -85,17 +86,36 @@ export function isValidGtin(digits: string): boolean {
  * does not, which is the only thing standing between it and a false identity
  * match against a completely different record on eBay.
  */
-export function extractGtin(barcodes: readonly string[] | undefined): string | null {
+export function extractGtin(
+  barcodes: readonly string[] | undefined,
+  wanted?: string | null,
+): string | null {
   const found: string[] = [];
   for (const raw of barcodes ?? []) {
     if (typeof raw !== 'string' || !GTIN_CANDIDATE.test(raw)) continue;
     const digits = raw.replace(/\D/g, '');
     if (isValidGtin(digits)) found.push(digits);
   }
-  // Longest first: a release listing both a UPC-A and its EAN-13 form should be
-  // identified by the more specific one.
-  found.sort((a, b) => b.length - a.length);
-  return found[0] ?? null;
+  if (found.length === 0) return null;
+
+  // A release routinely carries SEVERAL valid barcodes, and the DTO has one
+  // slot. Measured on `--gtin 5099996601419`: two of five rows came back
+  // reporting `0190295272432` — a different, equally real barcode — because
+  // "longest wins" preferred the zero-padded form. The row the user searched
+  // for then looked like it did not carry the code they searched by.
+  //
+  // So when the caller named one, that is the one to report. `normalizeGtin`
+  // on both sides makes the padded and bare spellings one number, which is the
+  // other half of the same defect.
+  const asked = normalizeGtin(wanted ?? null);
+  if (asked) {
+    const match = found.find((g) => normalizeGtin(g) === asked);
+    if (match) return match;
+  }
+
+  // Otherwise the source's own order decides. Longest-first was a guess about
+  // specificity that turned out to select the padding.
+  return found[0];
 }
 
 /**
@@ -109,9 +129,28 @@ export function extractGtin(barcodes: readonly string[] | undefined): string | n
  * usable answer. So the qualifier is part of the title, the way any other
  * marketplace would have written it into theirs.
  */
+/**
+ * Format terms every pressing shares, and which therefore distinguish none.
+ *
+ * Measured over five rows of one search: the first three terms were identical
+ * five times out of five — `Vinyl, LP, Album` — while what actually told the
+ * editions apart sat behind them and was cut: `Limited Edition/Reissue/
+ * Remastered/Repress` on one row, `Reissue/Remastered/Repress` on another. Both
+ * printed as "(Vinyl, LP, Album, …)". The qualifier exists BECAUSE the edition
+ * is the identity on this source, so keeping the generic half was the wrong
+ * three.
+ */
+const GENERIC_FORMATS = new Set(['vinyl', 'cd', 'lp', 'album', 'cassette', 'file', 'box set']);
+
 export function buildTitle(row: MappableRow): string {
   const base = stripContactDetails((row.title ?? '').trim());
-  const parts = [...(row.format ?? []).slice(0, 3), row.year, row.country].filter(
+  const formats = (row.format ?? []).filter((f): f is string => typeof f === 'string' && f.length > 0);
+  const distinctive = formats.filter((f) => !GENERIC_FORMATS.has(f.toLowerCase()));
+  // Generic terms first — they say what the object IS — then what makes this
+  // pressing different from the next one. Both halves capped, so a release with
+  // eleven format terms does not push the year and country off the line.
+  const chosen = [...formats.filter((f) => GENERIC_FORMATS.has(f.toLowerCase())).slice(0, 2), ...distinctive.slice(0, 2)];
+  const parts = [...chosen, row.year, row.country].filter(
     (p): p is string => typeof p === 'string' && p.length > 0,
   );
   return parts.length > 0 ? `${base} (${parts.join(', ')})` : base;
@@ -191,9 +230,12 @@ export function plainNotes(raw: string | undefined): string {
 function lowestPrice(stats: DiscogsMarketplaceStats): Money | null {
   const raw = stats.lowest_price;
   if (!raw || typeof raw.value !== 'number' || !Number.isFinite(raw.value)) return null;
-  const currency =
-    typeof raw.currency === 'string' && raw.currency.length === 3 ? raw.currency.toUpperCase() : 'EUR';
-  return money(raw.value * 100, currency);
+  // No fallback currency. All twelve measured responses carried `"EUR"`, so
+  // this path never fired — but the default it used to carry is the very thing
+  // the source record warns about for the release endpoint: labelling dollars
+  // as euros. An amount whose currency we do not know is not an amount.
+  if (typeof raw.currency !== 'string' || raw.currency.length !== 3) return null;
+  return money(raw.value * 100, raw.currency.toUpperCase());
 }
 
 /**
@@ -209,6 +251,11 @@ export function sellUrl(id: number): string {
   return `https://www.discogs.com/sell/release/${id}`;
 }
 
+export interface MapOptions {
+  /** The GTIN the caller searched by, when there was one. */
+  readonly wantedGtin?: string | null;
+}
+
 export interface MappedReleases {
   readonly listings: readonly Listing[];
   /**
@@ -219,6 +266,8 @@ export interface MappedReleases {
   readonly unmappable: number;
   /** Releases nobody is currently selling. Dropped — but counted, so an empty result stays explainable. */
   readonly withoutOffers: number;
+  /** Of those, the ones Discogs forbids selling at all. A permanent state, not today's. */
+  readonly blocked: number;
 }
 
 /**
@@ -233,15 +282,27 @@ export function mapReleases(
   rows: readonly MappableRow[],
   statsFor: (id: number) => DiscogsMarketplaceStats | undefined,
   fetchedAt: string,
+  options: MapOptions = {},
 ): MappedReleases {
   const listings: Listing[] = [];
   let unmappable = 0;
   let withoutOffers = 0;
+  let blocked = 0;
 
   for (const row of rows) {
     const id = typeof row.id === 'number' && Number.isFinite(row.id) ? row.id : null;
     const title = typeof row.title === 'string' ? row.title.trim() : '';
     if (id === null || title.length === 0) {
+      unmappable += 1;
+      continue;
+    }
+    // Read the row's own answer instead of trusting the URL we sent. Every row
+    // carries `type`, and an id that is an ARTIST id priced as a release is the
+    // failure this adapter has already had once — silently, because the only
+    // thing asserting "release" was a query parameter that never left the
+    // process. `unmappable` is the right bucket: it is the discriminator that
+    // makes a shape change loud.
+    if (typeof row.type === 'string' && row.type !== 'release') {
       unmappable += 1;
       continue;
     }
@@ -255,6 +316,7 @@ export function mapReleases(
     const price = lowestPrice(stats);
     if ((stats.num_for_sale ?? 0) <= 0 || price === null) {
       withoutOffers += 1;
+      if (stats.blocked_from_sale === true) blocked += 1;
       continue;
     }
 
@@ -297,12 +359,12 @@ export function mapReleases(
       endsAt: null,
       bidCount: null,
       images,
-      gtin: extractGtin(row.barcode),
+      gtin: extractGtin(row.barcode, options.wantedGtin),
       fetchedAt,
     });
   }
 
-  return { listings, unmappable, withoutOffers };
+  return { listings, unmappable, withoutOffers, blocked };
 }
 
 export interface ParsedSearch {

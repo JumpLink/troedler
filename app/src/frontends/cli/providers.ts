@@ -113,7 +113,12 @@ export const quotaCommand: CommandModule = {
           if (r.error) console.log(`${r.id}: nicht abrufbar — ${r.error}`);
           else
             console.log(
-              `${r.id}: ${r.remaining ?? '?'} von ${r.limit ?? '?'} übrig${r.resetAt ? `, zurück am ${r.resetAt}` : ''}`,
+              // "Rolling", not "left": Discogs' counter is a moving average and
+              // apparently edge-local — 31 requests in 20 seconds were answered
+              // while it reported 12 used. Printing it as a remaining budget
+              // invited planning against a number that does not hold.
+              `${r.id}: ${r.remaining ?? '?'} von ${r.limit ?? '?'} im gleitenden Fenster` +
+                `${r.resetAt ? `, Fenster schiebt sich bis ${r.resetAt}` : ''}`,
             );
         }
       },

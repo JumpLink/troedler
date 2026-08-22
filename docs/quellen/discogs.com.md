@@ -117,10 +117,19 @@ Under `User-agent: *`:
 
 So all three endpoints the adapter uses would pass the gate on their own. The
 adapter still sets `apiHost: true`, and the reason is narrower than "it is an
-API": what the flag drops is the extra two-second politeness floor, which would
-turn twenty price lookups into forty seconds of waiting for nothing — Discogs
-publishes its own limit and its own remaining budget, and the adapter throttles
-against those instead.
+API": the extra two-second politeness floor would turn twenty price lookups into
+forty seconds of waiting for nothing — Discogs publishes its own limit and its
+own remaining budget, and the adapter throttles against those instead.
+
+**What the flag drops is more than the floor, and this file understated it.**
+`apiHost: true` also means robots.txt is never fetched and the robots rules are
+never evaluated for this host. That is why the table above was checked by hand,
+and it is why `troedler robots https://api.discogs.com/...` describes something
+other than what runs: the command loads robots.txt and applies it, the adapter
+does neither. Harmless here — verified 2026-08-22, `api` and `www` serve
+byte-identical robots.txt (3 426 bytes) and none of the three paths is
+disallowed under `User-agent: *` — but the command that exists to make the claim
+checkable does not check this source's actual path.
 
 ## User-Agent
 
@@ -206,6 +215,59 @@ End-to-end through the adapter, unauthenticated:
 | `search("beatles", limit 5)` immediately after | 1 | 0.6 s | `ProviderError(rate-limited, retryAfter 60)` — refused itself with 2 requests still in the window |
 
 ## Traps
+
+**The price is a global aggregate, and it is not on the page we link to.** This
+is the most important sentence in this file. `/marketplace/stats/{id}` answers
+with the cheapest of every copy worldwide, converted by Discogs — the long
+fraction gives it away: `lowest_price.value` for release 36984 is
+`7.679804607882764`, not a figure any seller typed. troedler prints "ab 7,68 €"
+and links `/sell/release/36984`, and that page — anonymous, `?currency=EUR&sort=
+price,asc` — starts at **€22,99** and shows 6 offers where the API said 66.
+Release 15159: 9,00 € against **16,98 €**, 104 offers against 111.
+
+*Measured 2026-08-22, and the counter-example matters as much:* release 1322803
+answers `0.40 EUR` and its sell page begins at `data-pricevalue=0.40` — the same
+figure to the cent. So the gap is **not a property of the number**; it varies by
+release, and the visible sellers on 36984 were all NL/DE, which points at an
+IP-dependent shipping filter on the website. Confirming that would need a login,
+which is a hard rule against.
+
+What follows for the code: the number is faithfully copied and must never be
+treated as an asking price. `priceKind: 'from'` says so, and the kernel now acts
+on it — the price band groups by basis and refuses to mix, and `verdictFor`
+answers `unknown` rather than calling a minimum over 191 copies a bargain
+against a field of asking prices, which it did every single time.
+
+**The row says what it is, and the adapter used to take the URL's word for it.**
+Every search row carries `"type": "release"` (measured: 22 of 22). It was not
+modelled at all, because the adapter relied on `type=release` being in the URL it
+built — the exact assumption that fell away when `searchParams.set()` turned out
+to be a silent no-op under GJS and `/database/search` answered with 34.7 million
+rows of everything. Artist ids priced as releases would have been invisible.
+
+**One release, several valid barcodes — and the DTO has one slot.** *Measured on
+`--gtin 5099996601419`:* two of five rows reported `0190295272432` instead, an
+equally real barcode on the same release, because the rule was "longest wins"
+and the zero-padded UPC-A is longer. The row a user searched by then looked like
+it did not carry the code it had matched on. The rule is now: report the one the
+caller asked for; failing that, the source's own order. `0190295272432` and
+`190295272432` are one number, and `normalizeGtin` in the kernel makes them one.
+
+**`blocked_from_sale` is not "nothing for sale today".** Discogs bans the sale of
+bootlegs and takedowns permanently. *Measured on five "unofficial" releases:*
+`{"num_for_sale": null, "lowest_price": null, "blocked_from_sale": true}` — and
+`null`, not the `0` this project's own type comment claimed. The flag was
+modelled and read nowhere, so five permanently unsellable releases were reported
+as "derzeit nicht angeboten", which invites coming back.
+
+**The rate-limit header is a rolling average, not a ledger.** *Measured
+2026-08-22:* 31 requests in 20 seconds were all answered while Discogs reported
+**12** used. It is a moving window and appears to be edge-local. So `remaining`
+is the best signal available and not a guarantee: the enrichment budget derived
+from it counts ATTEMPTS (a 404 costs the same as a hit — "Release not found." is
+a documented answer), and the CLI now prints the number as a rolling window
+rather than as requests you have left. In the CLI, one command is one process,
+so `troedler quota discogs` always spends a request of its own.
 
 **The release endpoint's price is in dollars.** `GET /releases/{id}` also
 carries `lowest_price` — as a bare number with no currency, and it **ignores

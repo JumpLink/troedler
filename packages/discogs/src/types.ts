@@ -26,6 +26,17 @@ export interface DiscogsPagination {
  */
 export interface DiscogsSearchRow {
   readonly id?: number;
+  /**
+   * What the id refers to — `"release"`, `"master"`, `"artist"`, `"label"`.
+   *
+   * Present on every row (measured: 22 of 22) and previously not modelled at
+   * all, because the adapter relied on `type=release` being in the URL it built.
+   * That assumption is exactly what fell away when `searchParams.set()` turned
+   * out to be a silent no-op under GJS and the query never left the process:
+   * `/database/search` answered with everything, and nothing here could have
+   * noticed the rows were artists.
+   */
+  readonly type?: string;
   /** Already `"Artist - Release"`. Discogs joins it server-side. */
   readonly title?: string;
   /** Path on the website, e.g. `/release/125204-Kraftwerk-Kraftwerk`. */
@@ -62,7 +73,15 @@ export interface DiscogsMarketplaceStats {
   readonly num_for_sale?: number;
   /** Honours `curr_abbr` and names its own currency. `null` when nothing is for sale. */
   readonly lowest_price?: { readonly value?: number; readonly currency?: string } | null;
-  /** Discogs forbids selling this release (bootlegs, takedowns). Then `num_for_sale` is 0. */
+  /**
+   * Discogs forbids selling this release at all (bootlegs, takedowns).
+   *
+   * Measured on five "unofficial" releases: `num_for_sale` is then **`null`**,
+   * not `0` as this comment used to claim. The code survived on `?? 0`, but the
+   * documented reality was wrong — and the distinction the flag carries,
+   * "nobody is selling one right now" versus "selling one is not allowed", was
+   * modelled here and read nowhere.
+   */
   readonly blocked_from_sale?: boolean;
 }
 
