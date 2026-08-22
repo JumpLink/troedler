@@ -121,11 +121,15 @@ export class HttpClient {
     const scheme = this.#schemes.get(host) ?? 'https:';
     let state: RobotsState;
     try {
-      const res = await this.#limiter.run(host, { delaySeconds: 0, maxRequests: null }, () =>
-        this.#fetch(`${scheme}//${host}/robots.txt`, {
-          headers: baseHeaders(this.#version),
-          signal: signal ?? AbortSignal.timeout(this.#timeoutMs),
-        }),
+      const res = await this.#limiter.run(
+        host,
+        { delaySeconds: 0, maxRequests: null },
+        () =>
+          this.#fetch(`${scheme}//${host}/robots.txt`, {
+            headers: baseHeaders(this.#version),
+            signal: signal ?? AbortSignal.timeout(this.#timeoutMs),
+          }),
+        signal,
       );
       state = res.ok
         ? { kind: 'parsed', robots: parseRobots(await res.text(), new Date().toISOString()) }
@@ -211,18 +215,27 @@ export class HttpClient {
 
     let res: Response;
     try {
-      res = await this.#limiter.run(host, budget, () =>
-        this.#fetch(url, {
-          method: init.method,
-          headers: baseHeaders(
-            this.#version,
-            init.contentType ? { 'Content-Type': init.contentType, ...options.headers } : options.headers,
-          ),
-          body: init.body,
-          redirect: 'follow',
-          // gjsify's fetch has no `timeout` option — AbortSignal.timeout is the way.
-          signal: options.signal ?? AbortSignal.timeout(this.#timeoutMs),
-        }),
+      res = await this.#limiter.run(
+        host,
+        budget,
+        () =>
+          this.#fetch(url, {
+            method: init.method,
+            headers: baseHeaders(
+              this.#version,
+              init.contentType
+                ? { 'Content-Type': init.contentType, ...options.headers }
+                : options.headers,
+            ),
+            body: init.body,
+            redirect: 'follow',
+            // gjsify's fetch has no `timeout` option — AbortSignal.timeout is the way.
+            signal: options.signal ?? AbortSignal.timeout(this.#timeoutMs),
+          }),
+        // The queue wait honours the caller's cancellation too, not only the
+        // socket: with a two-second floor per host, "stop" has to reach the
+        // pause or it does not reach anything the user can see.
+        options.signal,
       );
     } catch (err) {
       if (err instanceof RateLimitExceeded) {
