@@ -150,7 +150,7 @@ https://www.quoka.de/anzeigen/<kategorie>/?q=<begriff>&commercial=&pag=
 | Parameter | Meaning | *Measured* behaviour |
 |---|---|---|
 | `q` | Suchbegriff | free text, not slugged; `?q=fahrrad` → 3 521 hits |
-| `commercial` | Anbietertyp | **works.** `false` → 1 140, `true` → 2 381, matching the counts the site prints beside the filter. Re-confirmed 2026-08-22 against two detail pages, one per side. The adapter stamps the REQUESTED type onto every row, which is only true while the operator honours the parameter: were it ignored, `resultscount` would stay at its unfiltered value and the stamp would be set anyway. Comparing the filtered count against the unfiltered one is the canary, and it costs a second request that is not spent today |
+| `commercial` | Anbietertyp | **works.** `false` → 1 140, `true` → 2 381, matching the counts the site prints beside the filter. Re-measured 2026-08-22: 3 528 / 1 148 / 2 380, and the two sides still sum exactly to the whole. The adapter stamps the REQUESTED type onto every row, which is only true while the operator honours the parameter — **and since 2026-08-22 the stamp is only set when the page confirms it**, see „Der Anbietertyp-Streifen" below |
 | `pag` | Seite, 1-based | `&pag=2`; the pagination links up to page 100 |
 | `pricetype` | Preistyp | **unverified.** Re-checked 2026-08-22: the name appears in none of six fetched pages, and the filter form carries `q`, `category`, `County`, `City`, `Area`, `Zip`, `make`, `model`, `subcategory`, `breed`, `species`, `multi_handover`. The claim above was not re-measured and it was not sent — inventing a parameter is how the `Zip`/`Area` attempt below produced zero rows |
 | `withpictures` | nur mit Bild | same: named here, not found in the markup, not sent |
@@ -176,6 +176,49 @@ on this source, so radius stays the kernel's job and never enters a URL.
 `serverFilters` is therefore `['sellerType', 'sort']`, where `sort` means only
 `newest` — see below.
 
+### Der Anbietertyp-Streifen — measured 2026-08-22
+
+The page states which side of the seller filter is in force, in its own markup,
+on every page. That is what makes the stamp checkable at all, and it is a
+better fact than the count comparison this record proposed on 2026-08-21.
+
+```html
+<div class="link-filters user-type-filters">
+  <span class="link-filter active">Alle<br><span class="lf-count">3528</span></span>
+  <a class="link-filter" href="…&commercial=false">Privat<br><span class="lf-count">1148</span></a>
+  <a class="link-filter" href="…&commercial=true">Gewerblich<br><span class="lf-count">2380</span></a>
+</div>
+```
+
+The entry in force is a `<span class="link-filter active">`; the other two stay
+`<a class="link-filter" href=…>`. „Alle" additionally loses its `href` and gains
+`onclick="RemoveQueryString('commercial', event)"` once a filter is on.
+
+*Measured* over seven live pages under the honest agent:
+
+| Page | `resultscount` | active | count at the active entry |
+|---|---|---|---|
+| `?q=fahrrad` | 3 528 | Alle | 3 528 |
+| `?q=fahrrad&commercial=false` | 1 148 | Privat | 1 148 |
+| `?q=fahrrad&commercial=true` | 2 380 | Gewerblich | 2 380 |
+| `?q=fahrrad&commercial=false&pag=2` | 1 148 | Privat | 1 148 |
+| `/elektronik/computer/?q=laptop&commercial=false` | 338 | Privat | 338 |
+| `?q=qqzzxxwwvv123&commercial=false` (zero hits) | 0 | Privat | 0 |
+| `?q=bandsaege&commercial=false` | 13 | Privat | 13 |
+
+Seven of seven: the strip is present — on page 2, on a category search and on
+the zero-hit page — always exactly three entries in the order Alle / Privat /
+Gewerblich, and `resultscount` always equals the ACTIVE entry's own count.
+
+**The 2026-08-21 plan is superseded rather than deleted.** That entry read:
+„Comparing the filtered count against the unfiltered one is the canary, and it
+costs a second request that is not spent today." The comparison would have
+worked, but it was an inference from two numbers, it could not tell an ignored
+parameter from a query where every ad happens to be private, and it cost an
+extra request per search. The strip says it outright and costs nothing. The
+trail is kept because the reasoning — „a stamp taken from the request is only
+true while the operator honours it" — is still the reason any of this exists.
+
 ### The default order IS newest
 
 *Measured* across four pages of one query: page 1 all „heute", page 4 „gestern",
@@ -191,8 +234,11 @@ in the URL, a GUID in `data-articleid`, title link, teaser text, one thumbnail
 and the price. **No condition field, no shipping field, no seller badge, no GTIN.**
 
 `sellerType` therefore comes from the *request*: under `commercial=false` every
-row on the page is private by construction, and the parser stamps that on. With
-no filter it stays `unknown` — never guessed.
+row on the page is private by construction, and the parser stamps that on —
+**but only after the strip above has confirmed the filter ran.** With no filter,
+and with an unconfirmed one, it stays `unknown` — never guessed. An unconfirmed
+filter also drops out of `applied`, so `--explain` reports it under „NICHT
+angewandt" rather than as something the source did.
 
 `getListing` is **not implemented**. The ad page carries a schema.org `Product`
 block with the full description and all image URLs, and a slug-less URL works

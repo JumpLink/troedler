@@ -45,14 +45,20 @@ export {
 } from './quoka.ts';
 
 export {
+  checkQuokaSellerFilter,
   parseMarktSearchPage,
   parseQuokaResultCount,
   parseQuokaSearchPage,
+  parseQuokaUserTypeFacets,
   quokaIdFromUrl,
   quokaPlace,
   type MarktSearchPage,
   type ParseOptions,
+  type QuokaFacetKind,
   type QuokaParseOptions,
+  type QuokaSearchPage,
+  type QuokaSellerFilterCheck,
+  type QuokaUserTypeFacet,
   type SearchPage,
 } from './parse.ts';
 

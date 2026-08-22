@@ -87,6 +87,38 @@ export const QUOKA_SRP = {
   image: '.art-img img',
   /** Both pagination arrows. On page 1 only "next" is a link; from page 2 the LAST one is. */
   next: 'ul.pagination li.arrow a',
+  /**
+   * The seller-type strip — and the only reason the seller stamp is checkable.
+   *
+   * This source prints no seller badge on a row, so `sellerType` comes from the
+   * REQUEST: under `commercial=false` every row is private by construction. That
+   * holds exactly as long as the operator honours the parameter, and if it ever
+   * stopped, the stamp would go on anyway and nothing would notice.
+   *
+   * The strip is the operator SAYING which side is in force, which is a better
+   * fact than any count comparison and costs no second request:
+   *
+   * ```html
+   * <div class="link-filters user-type-filters">
+   *   <span class="link-filter active">Alle<br><span class="lf-count">3528</span></span>
+   *   <a class="link-filter" href="…&commercial=false">Privat<br><span class="lf-count">1148</span></a>
+   *   <a class="link-filter" href="…&commercial=true">Gewerblich<br><span class="lf-count">2380</span></a>
+   * </div>
+   * ```
+   *
+   * *Measured 2026-08-22* over seven live pages — unfiltered, `commercial=false`,
+   * `commercial=true`, page 2 of a filtered search, a category search, a zero-hit
+   * query and a 13-hit query. All seven: exactly three entries, order Alle /
+   * Privat / Gewerblich, every entry with its own `lf-count`, the one in force
+   * rendered as `<span class="link-filter active">` while the others stay
+   * `<a class="link-filter" href=…>`. On all seven, `resultscount` equalled the
+   * ACTIVE entry's count (3528, 1148, 2380, 1148, 338, 0, 13).
+   */
+  userTypeFilter: '.link-filters.user-type-filters .link-filter',
+  /** The count inside one strip entry. */
+  userTypeCount: '.lf-count',
+  /** Quoka's mark on the entry that is in force. */
+  userTypeActive: 'active',
 } as const;
 
 /**
