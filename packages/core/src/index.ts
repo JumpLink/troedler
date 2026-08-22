@@ -7,6 +7,7 @@ export * from './merge.ts';
 export * from './money.ts';
 export * from './normalize.ts';
 export * from './port.ts';
+export * from './present.ts';
 export * from './query.ts';
 export * from './search.ts';
 export * from './stats.ts';

@@ -16,6 +16,7 @@
 import type { CommandModule } from 'yargs';
 
 import { SOURCES, sourceFor } from '@troedler/compliance';
+import { providerState } from '@troedler/core';
 import { cacheDir, dataDir, dbPath, loadConfig } from '@troedler/store';
 
 import { explainUrl, listProviders } from '../../core/actions/index.ts';
@@ -208,8 +209,7 @@ export const checkCommand: CommandModule = {
           console.log(`Datenbank:     ${r.database.path} — ${r.database.status}`);
           console.log('Quellen:');
           for (const p of r.providers) {
-            const state = !p.enabled ? 'aus' : p.configured ? 'bereit' : 'an, aber nicht konfiguriert';
-            console.log(`  ${p.id.padEnd(16)} ${state}${p.problem ? ` — ${p.problem}` : ''}`);
+            console.log(`  ${p.id.padEnd(16)} ${providerState(p)}${p.problem ? ` — ${p.problem}` : ''}`);
           }
         },
       },

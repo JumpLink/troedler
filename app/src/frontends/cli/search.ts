@@ -15,9 +15,11 @@
 import type { CommandModule } from 'yargs';
 
 import {
-  PROVIDER_LABEL,
   RESULTS_PER_PROVIDER,
   RESULTS_TOTAL,
+  emptinessNotice,
+  gapNotice,
+  mergeExcludedNotice,
   type Condition,
   type ProviderId,
 } from '@troedler/core';
@@ -164,7 +166,7 @@ export const searchCommand: CommandModule = {
           }
 
           // Before the results, not after: it changes what the results MEAN.
-          for (const gap of result.gaps) console.log(`Hinweis: ${gap}\n`);
+          for (const gap of result.gaps) console.log(`${gapNotice(gap)}\n`);
 
           const listings = allListings(result.outcome);
           if (result.outcome.products) {
@@ -182,13 +184,8 @@ export const searchCommand: CommandModule = {
             }
             // Rows are missing from this list by licence, not by chance. A
             // reader who is not told will read the merged list as "everything".
-            if (result.outcome.mergeExcluded.length > 0) {
-              const names = result.outcome.mergeExcluded.map((id) => PROVIDER_LABEL[id] ?? id).join(', ');
-              console.log(
-                `\n${names} steht NICHT in dieser gemischten Liste — die Lizenz verlangt, ` +
-                  'diese Zeilen von fremden getrennt zu zeigen. Die Treffer stehen ohne --merge da.',
-              );
-            }
+            const excluded = mergeExcludedNotice(result.outcome.mergeExcluded);
+            if (excluded) console.log(`\n${excluded}`);
           } else {
             for (const [provider, group] of result.outcome.grouped) {
               if (group.length === 0) continue;
@@ -209,13 +206,8 @@ export const searchCommand: CommandModule = {
           // The distinction that matters more than any of the above: nobody
           // answered is not the same fact as nothing matched, and only the
           // second one means the thing is not out there.
-          if (result.noSourceAnswered) {
-            console.log(
-              '\nKeine einzige Quelle hat geantwortet — das ist NICHT dasselbe wie "nichts gefunden".',
-            );
-          } else if (listings.length === 0) {
-            console.log('\nKeine Treffer.');
-          }
+          const emptiness = emptinessNotice(result.noSourceAnswered, listings.length);
+          if (emptiness) console.log(`\n${emptiness}`);
         },
       },
     );

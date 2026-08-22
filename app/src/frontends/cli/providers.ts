@@ -10,7 +10,7 @@
 
 import type { CommandModule } from 'yargs';
 
-import type { ProviderId } from '@troedler/core';
+import { providerState, type ProviderId } from '@troedler/core';
 
 import {
   AcknowledgementRequired,
@@ -78,8 +78,7 @@ export const providersCommand: CommandModule = {
       print: (views) => {
         if (asJson) return printJson(views);
         for (const v of views) {
-          const state = v.enabled ? (v.configured ? 'an' : 'an, aber nicht konfiguriert') : 'aus';
-          console.log(`${v.id.padEnd(16)} ${state.padEnd(28)} ${v.access}  ${v.host}`);
+          console.log(`${v.id.padEnd(16)} ${providerState(v).padEnd(28)} ${v.access}  ${v.host}`);
           if (action === 'show' || !v.enabled || !v.configured) {
             if (v.problem) console.log(`    Problem: ${v.problem}`);
             if (v.note) console.log(`    ${v.note.split('\n').join('\n    ')}`);

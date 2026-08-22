@@ -19,7 +19,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { CONDITION_ORDER, fmtMoney, RESULTS_PER_PROVIDER, RESULTS_TOTAL } from '@troedler/core';
+import { CONDITION_ORDER, fmtLocation, fmtMoney, RESULTS_PER_PROVIDER, RESULTS_TOTAL } from '@troedler/core';
 import type { Condition, ProviderId } from '@troedler/core';
 
 import { allListings, getListing, search } from '../../../core/actions/index.ts';
@@ -157,7 +157,7 @@ export function registerSearchTools(server: McpServer, context: Context): void {
               condition: l.condition,
               seller_type: l.sellerType,
               delivery: l.delivery,
-              location: [l.location.postalCode, l.location.city].filter(Boolean).join(' '),
+              location: fmtLocation(l.location),
               listed_at: l.listedAt,
               ends_at: l.endsAt,
               url: l.url,
