@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@gjsify/unit';
 
 import { ProviderError, allSourcesUnavailable, money, searchAll } from '@troedler/core';
+import { getListing } from '../../../src/core/actions/index.ts';
 import type {
   MarketProvider,
   ProviderCapabilities,
@@ -185,6 +186,44 @@ export default async () => {
       const grouped = await searchAll([ebay, quoka], query, { group: true });
       expect(grouped.products?.length).toBe(1);
       expect(grouped.products?.[0].listings.length).toBe(2);
+    });
+
+    await it('tells "gone" apart from "cannot be looked up"', async () => {
+      // The Justiz-Auktion adapter advertises `troedler show justiz-auktion:<id>`
+      // under every search, for the one source that cannot be searched at all.
+      // The command did not exist, and the only route to a single offer was
+      // `item watch`, which WRITES. This is that route, read-only, shared by the
+      // CLI and the MCP tool so there is one answer and not two.
+      const ctx = {
+        providers: [
+          {
+            capabilities: caps('zoll-auktion', { disclaimer: 'Höchstgebot, kein Kaufpreis.' }),
+            async status() {
+              return { configured: true, problem: null };
+            },
+            async search(): Promise<ProviderResult> {
+              throw new Error('nicht benutzt');
+            },
+            async getListing(id: string) {
+              return id === '1' ? listing({ provider: 'zoll-auktion', id: '1' }) : null;
+            },
+          },
+        ],
+      } as unknown as Parameters<typeof getListing>[0];
+
+      const found = await getListing(ctx, 'zoll-auktion:1');
+      expect(found.listing?.id).toBe('1');
+      expect(found.problem).toBe(null);
+      expect(found.disclaimer).toBe('Höchstgebot, kein Kaufpreis.');
+
+      // Gone: an answer, not a failure — `problem` stays null.
+      const gone = await getListing(ctx, 'zoll-auktion:2');
+      expect(gone.listing).toBe(null);
+      expect(gone.problem).toBe(null);
+
+      // Not an answer at all: three different reasons, none of them "gone".
+      expect((await getListing(ctx, 'nonsense')).problem !== null).toBe(true);
+      expect((await getListing(ctx, 'ebay:1')).problem !== null).toBe(true);
     });
 
     await it('warns when a source cannot take part in the cross-provider order', async () => {

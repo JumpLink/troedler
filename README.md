@@ -15,25 +15,41 @@ runtime required.
 ```console
 $ troedler search Bandsäge --max-price 400 --seller private --explain
 
+eBay (18)
   1. Metabo BAS 318 Bandsäge — gebraucht, funktionsfähig
-     289,00 €  Gebraucht — sehr gut · privat · Versand · 21762 Otterndorf · vor 2 d · unter dem Feld
+     289,00 € inkl. Versand  Gebraucht — sehr gut · privat · Versand · 21762 Otterndorf · vor 2 d · unter dem Feld
      https://www.ebay.de/itm/…
+     Preisband über 18 Forderungspreise inkl. Versand: 95,00 € … 240,00 € — 315,00 € — 420,00 € … 890,00 €
 
-Preisband über 23 Angebote: 95,00 € … 240,00 € — 315,00 € — 420,00 € … 890,00 €
+Zoll-Auktion (5)
+  1. 1 Bandsäge Metabo, gebraucht
+     150,00 € Auktion  Zustand unbekannt · gewerblich · Abholung · 60326 Frankfurt am Main · endet in 1 h · 17 Gebot(e)
+     https://www.zoll-auktion.de/auktion/produkt/…
+     Preisband über 5 aktuelle Gebote: 13,00 € … 41,00 € — 65,00 € — 150,00 € … 310,00 €
 
 eBay: 18 Treffer
     Filter beim Anbieter: maxPrice, sellerType
     Filter hier nachgezogen: —
 Kleinanzeigen: übersprungen — Nutzungsbedingungen untersagen automatisierten Abruf, siehe docs/quellen/kleinanzeigen.de.md
-Zoll-Auktion: 5 Treffer
+Zoll-Auktion: 5 Treffer (7 weitere passten und fielen dem Limit zum Opfer)
 ```
+
+One band **per source**, and it names what its numbers are. A current auction bid, a seller's
+asking price and "cheapest of 191 copies worldwide" are three different kinds of number, and a
+single band across them computes exact quartiles over nonsense.
 
 ## What it does
 
 - **One query, every marketplace.** Results stay grouped by source, so you can see that a thing
   costs 40 € on one and 120 € on another — which is the answer you actually wanted.
+- **The same thing, side by side.** `--compare` groups the results by product across sources, over
+  the barcode where there is one. A group whose rows one source keeps apart — one barcode, three
+  pressings — is shown as such and gets no single price, because it does not have one.
 - **Is this a good price?** A median and a quartile band over what is currently on offer, and a
-  coarse verdict per listing. It describes the field in front of you; it does not appraise.
+  coarse verdict per listing. One band per source, over one kind of number, and it says what it
+  left out. It describes the field in front of you; it does not appraise.
+- **One offer, read-only.** `troedler show <quelle>:<id>` fetches a single listing in full without
+  touching the local store.
 - **Saved searches with alerts.** `troedler watch run` reports only what is new since last time.
 - **Watch single offers.** Price changes and "it's gone" for the things you are still thinking
   about.

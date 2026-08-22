@@ -12,6 +12,7 @@ import {
   quotaCommand,
   robotsCommand,
   searchCommand,
+  showCommand,
   termsCommand,
   watchCommand,
 } from './frontends/cli/index.ts';
@@ -26,6 +27,7 @@ function reportError(err: unknown): void {
 const parseArgs = () =>
   yargs(hideBin(process.argv))
     .command(searchCommand)
+    .command(showCommand)
     .command(watchCommand)
     .command(itemCommand)
     .command(providersCommand)

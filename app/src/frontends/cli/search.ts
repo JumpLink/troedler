@@ -22,7 +22,7 @@ import {
   type ProviderId,
 } from '@troedler/core';
 
-import { allListings, search } from '../../core/actions/index.ts';
+import { allListings, getListing, search } from '../../core/actions/index.ts';
 import { createContext } from '../../core/context.ts';
 import {
   pickArgv,
@@ -219,5 +219,47 @@ export const searchCommand: CommandModule = {
         },
       },
     );
+  },
+};
+
+/**
+ * `troedler show <key>` — one offer, read-only.
+ *
+ * It is the command the Justiz-Auktion adapter has been advertising under every
+ * search ("Einzelne Auktionen sind abrufbar — `troedler show justiz-auktion:<id>`")
+ * for a source that cannot be searched at all. It did not exist, and the only
+ * route to a single offer was `item watch`, which writes to the store.
+ */
+export const showCommand: CommandModule = {
+  command: 'show <key>',
+  describe: 'Ein einzelnes Angebot abrufen — nur lesen, nichts speichern',
+  builder: (yargs) =>
+    yargs
+      .positional('key', { type: 'string', describe: 'Schlüssel als <quelle>:<id>' })
+      .option('json', { type: 'boolean', default: false, describe: 'Maschinenlesbare Ausgabe' }),
+  handler: (argv) => {
+    const raw = argv as Record<string, unknown>;
+    const key = pickArgv<string>(raw, 'key')!;
+    const asJson = pickArgv<boolean>(raw, 'json') ?? false;
+
+    runAndExit(() => getListing(createContext(), key), {
+      print: (found) => {
+        if (asJson) return printJson(found);
+        if (found.problem) {
+          console.log(found.problem);
+          return;
+        }
+        if (!found.listing) {
+          // "Gone" and "could not look it up" are different facts, and only the
+          // first one means the offer is not there any more.
+          console.log(`${key}: gibt es nicht (mehr).`);
+          return;
+        }
+        console.log(renderListing(found.listing, undefined, 1));
+        if (found.listing.description) console.log(`\n${found.listing.description}`);
+        for (const image of found.listing.images) console.log(image);
+        if (found.disclaimer) console.log(`\n${found.disclaimer}`);
+      },
+    });
   },
 };

@@ -12,6 +12,7 @@ import {
   RESULTS_TOTAL,
   allSourcesUnavailable,
   clamp,
+  parseListingKey,
   priceBand,
   queryGaps,
   searchAll,
@@ -109,4 +110,55 @@ export async function search(context: Context, input: SearchInput): Promise<Sear
 /** Flatten an outcome for callers that want one list regardless of grouping. */
 export function allListings(outcome: SearchOutcome): Listing[] {
   return outcome.merged ? [...outcome.merged] : [...outcome.grouped.values()].flat();
+}
+
+export interface ListingLookup {
+  readonly listing: Listing | null;
+  /** Required notice for this source's rows, when it has one. */
+  readonly disclaimer: string | null;
+  /** Set when the key could not be looked up at all — a different fact from "gone". */
+  readonly problem: string | null;
+}
+
+/**
+ * One offer by its key — read-only, and the only read-only route to it.
+ *
+ * It existed only inside the MCP tool. The CLI's route to a single offer was
+ * `item watch`, which WRITES to the store, while the Justiz-Auktion adapter —
+ * the one source that cannot be searched at all — printed
+ * "Einzelne Auktionen sind abrufbar: `troedler show justiz-auktion:<id>`" under
+ * every single search. That command did not exist. The one escape hatch offered
+ * for the one unsearchable source was a sentence.
+ *
+ * `listing: null` with no problem means the offer is gone, which is an answer.
+ */
+export async function getListing(
+  context: Context,
+  key: string,
+  signal?: AbortSignal,
+): Promise<ListingLookup> {
+  const parsed = parseListingKey(key);
+  if (!parsed) {
+    return {
+      listing: null,
+      disclaimer: null,
+      problem: `"${key}" ist kein gültiger Schlüssel — erwartet wird <quelle>:<id>.`,
+    };
+  }
+  const provider = context.providers.find((p) => p.capabilities.id === parsed.provider);
+  if (!provider) {
+    return { listing: null, disclaimer: null, problem: `Unbekannte Quelle in "${key}".` };
+  }
+  if (!provider.getListing) {
+    return {
+      listing: null,
+      disclaimer: provider.capabilities.disclaimer,
+      problem: `${provider.capabilities.label} kann einzelne Angebote nicht nachschlagen.`,
+    };
+  }
+  return {
+    listing: await provider.getListing(parsed.id, signal),
+    disclaimer: provider.capabilities.disclaimer,
+    problem: null,
+  };
 }

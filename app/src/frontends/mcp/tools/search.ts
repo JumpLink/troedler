@@ -22,7 +22,7 @@ import { z } from 'zod';
 import { CONDITION_ORDER, fmtMoney, RESULTS_PER_PROVIDER, RESULTS_TOTAL } from '@troedler/core';
 import type { Condition, ProviderId } from '@troedler/core';
 
-import { allListings, search } from '../../../core/actions/index.ts';
+import { allListings, getListing, search } from '../../../core/actions/index.ts';
 import type { Context } from '../../../core/context.ts';
 import { mcpErrorFrom, mcpSuccess } from '../types.ts';
 
@@ -225,18 +225,9 @@ export function registerSearchTools(server: McpServer, context: Context): void {
     },
     async (params) => {
       try {
-        const at = params.key.indexOf(':');
-        if (at <= 0) return mcpErrorFrom(new Error(`"${params.key}" ist kein gültiger Schlüssel.`));
-        const id = params.key.slice(at + 1);
-        const provider = context.providers.find((p) => p.capabilities.id === params.key.slice(0, at));
-        if (!provider) return mcpErrorFrom(new Error(`Unbekannte Quelle in "${params.key}".`));
-        if (!provider.getListing) {
-          return mcpErrorFrom(
-            new Error(`${provider.capabilities.label} kann einzelne Angebote nicht nachschlagen.`),
-          );
-        }
-        const listing = await provider.getListing(id);
-        return mcpSuccess({ listing, disclaimer: provider.capabilities.disclaimer });
+        const found = await getListing(context, params.key);
+        if (found.problem) return mcpErrorFrom(new Error(found.problem));
+        return mcpSuccess({ listing: found.listing, disclaimer: found.disclaimer });
       } catch (err) {
         return mcpErrorFrom(err);
       }
