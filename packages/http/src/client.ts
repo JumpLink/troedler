@@ -94,11 +94,24 @@ export class HttpClient {
    * unreadable case is NOT cached — so the next request asks again instead of
    * inheriting one bad moment — and that the caller can tell the two apart.
    */
-  async robotsFor(host: string, signal?: AbortSignal): Promise<Robots | null> {
-    return (await this.robotsStateFor(host, signal)).robots;
+  async robotsFor(target: URL | string, signal?: AbortSignal): Promise<Robots | null> {
+    return (await this.robotsStateFor(target, signal)).robots;
   }
 
-  async robotsStateFor(host: string, signal?: AbortSignal): Promise<RobotsState> {
+  /**
+   * `target` is a full URL wherever the caller has one — the scheme is part of
+   * the question.
+   *
+   * A bare host was the only shape this took, and `troedler robots http://…`
+   * therefore probed `https://…/robots.txt`: a different file may answer, so the
+   * one caller that exists to verify the gate was verifying a different request
+   * than the one it named. Passing the URL makes the scheme travel with it.
+   */
+  async robotsStateFor(target: URL | string, signal?: AbortSignal): Promise<RobotsState> {
+    const url = typeof target === 'string' ? null : target;
+    const host = (url?.host ?? String(target)).toLowerCase();
+    if (url && !this.#schemes.has(host)) this.#schemes.set(host, url.protocol);
+
     const cached = this.#robots.get(host);
     if (cached) return cached;
 
@@ -148,22 +161,41 @@ export class HttpClient {
     // disabled provider still contacted its host — and the sources that are
     // disabled are exactly the ones whose operators asked not to be contacted
     // automatically. A request for robots.txt is still a request.
-    if (!options.enabled) {
-      const refusal = evaluate({ url: parsed, userAgent: 'troedler', robots: null, enabled: false });
+    const apiHost = options.apiHost ?? false;
+
+    // Everything the gate can decide WITHOUT robots.txt is decided first, and
+    // that is not an optimisation. Two of the three refusals — the opt-out list
+    // and a switched-off source — are about hosts whose operators asked not to
+    // be contacted automatically, and a request for robots.txt is still a
+    // request. The disabled case was already handled here; the opt-out case was
+    // not, and fetched `/robots.txt` from a host on the list before refusing it.
+    //
+    // For an API host this preflight is also the final answer: the licence
+    // governs, so robots.txt cannot change the verdict and is never asked for.
+    const preflight = evaluate({
+      url: parsed,
+      userAgent: 'troedler',
+      robots: null,
+      enabled: options.enabled,
+      apiHost,
+    });
+    if (!preflight.allowed) {
       throw new ProviderError(
         options.provider,
         'blocked-by-policy',
-        refusal.detail ?? 'Quelle ist abgeschaltet.',
+        preflight.detail ?? 'Abruf nicht erlaubt.',
       );
     }
 
-    const robots = options.apiHost ? null : await this.robotsFor(host, options.signal);
-    const verdict = evaluate({
-      url: parsed,
-      userAgent: 'troedler',
-      robots,
-      enabled: true,
-    });
+    const verdict = apiHost
+      ? preflight
+      : evaluate({
+          url: parsed,
+          userAgent: 'troedler',
+          robots: await this.robotsFor(parsed, options.signal),
+          enabled: true,
+          apiHost: false,
+        });
     if (!verdict.allowed) {
       throw new ProviderError(
         options.provider,
@@ -173,7 +205,7 @@ export class HttpClient {
     }
 
     const budget: HostBudget = {
-      delaySeconds: options.apiHost ? 0 : verdict.delaySeconds,
+      delaySeconds: verdict.delaySeconds,
       maxRequests: this.#maxPerHost,
     };
 

@@ -123,13 +123,18 @@ own remaining budget, and the adapter throttles against those instead.
 
 **What the flag drops is more than the floor, and this file understated it.**
 `apiHost: true` also means robots.txt is never fetched and the robots rules are
-never evaluated for this host. That is why the table above was checked by hand,
-and it is why `troedler robots https://api.discogs.com/...` describes something
-other than what runs: the command loads robots.txt and applies it, the adapter
-does neither. Harmless here — verified 2026-08-22, `api` and `www` serve
-byte-identical robots.txt (3 426 bytes) and none of the three paths is
-disallowed under `User-agent: *` — but the command that exists to make the claim
-checkable does not check this source's actual path.
+never evaluated for this host. That is why the table above was checked by hand.
+
+**And it made `troedler robots` describe something other than what runs — fixed
+2026-08-22.** The command loaded robots.txt and applied it; the adapter does
+neither. Harmless on this source, where `api` and `www` serve byte-identical
+files (3 426 bytes) and none of the three paths is disallowed under
+`User-agent: *` — but it printed a two-second wait that does not exist, and on
+Booklooker the same defect printed `VERBOTEN` for a URL every search fetches.
+The `apiHost` branch now lives in `@troedler/compliance`'s gate (`GateBasis`)
+rather than in `HttpClient`, so the command asks the same question the socket
+layer asks. `scripts/guard-api-hosts.mjs` keeps `apiHost: true` and
+`access: 'official-api'` from drifting apart again.
 
 ## User-Agent
 

@@ -2,25 +2,30 @@
  * The commands that let a person check what troedler is doing before trusting it:
  * `robots`, `terms`, `config`, `cache` and `check`.
  *
- * `robots check <url>` in particular is not a developer toy. The whole project
- * rests on the claim that it only fetches what a site permits, and a claim
- * nobody can verify is worth nothing. This makes the gate answerable from the
- * command line, naming the exact rule that decided.
+ * `robots <url>` in particular is not a developer toy. The whole project rests
+ * on the claim that it only fetches what a site permits, and a claim nobody can
+ * verify is worth nothing. This makes the gate answerable from the command
+ * line, naming the exact rule that decided.
+ *
+ * Which is why it has to answer for the program that exists rather than the
+ * simple one: the judgement lives in `explainUrl`, which asks the same gate the
+ * socket layer asks, with the same facts. It used to build its own question here
+ * and got a different answer — see the measurement in that file.
  */
 
 import type { CommandModule } from 'yargs';
 
-import { SOURCES, evaluate, sourceFor } from '@troedler/compliance';
+import { SOURCES, sourceFor } from '@troedler/compliance';
 import { cacheDir, dataDir, dbPath, loadConfig } from '@troedler/store';
 
-import { listProviders } from '../../core/actions/index.ts';
+import { explainUrl, listProviders } from '../../core/actions/index.ts';
 import { createContext } from '../../core/context.ts';
 import { VERSION, runningOnGjs } from '../../core/runtime.ts';
 import { pickArgv, printJson, runAndExit } from './output.ts';
 
 export const robotsCommand: CommandModule = {
   command: 'robots <url>',
-  describe: 'Prüfen, ob troedler eine URL abrufen dürfte — und welche Regel entscheidet',
+  describe: 'Prüfen, ob troedler eine URL abrufen würde — und was darüber entscheidet',
   builder: (yargs) =>
     yargs
       .positional('url', { type: 'string', describe: 'Vollständige URL' })
@@ -30,43 +35,45 @@ export const robotsCommand: CommandModule = {
     const url = pickArgv<string>(raw, 'url')!;
     const asJson = pickArgv<boolean>(raw, 'json') ?? false;
 
-    runAndExit(
-      async () => {
-        const context = createContext();
-        const parsed = new URL(url);
-        const state = await context.http.robotsStateFor(parsed.host.toLowerCase());
-        const verdict = evaluate({
-          url: parsed,
-          userAgent: 'troedler',
-          robots: state.robots,
-          enabled: true,
-        });
-        return {
-          url,
-          host: parsed.host,
-          ...verdict,
-          robots: state.kind,
-          robotsDetail: state.kind === 'unreadable' ? state.detail : null,
-        };
+    runAndExit(async () => explainUrl(createContext(), url), {
+      print: (v) => {
+        if (asJson) return printJson(v);
+        console.log(v.allowed ? `erlaubt: ${v.url}` : `VERBOTEN: ${v.url}`);
+        if (v.detail) console.log(`  ${v.detail}`);
+
+        // Which source this host belongs to decides everything above, so it is
+        // named rather than left for the reader to infer from the hostname.
+        if (v.provider) {
+          const state = v.provider.enabled ? 'an' : 'aus';
+          const kind = v.provider.access === 'official-api' ? 'offizielle API' : 'öffentliches HTML';
+          console.log(`  Quelle: ${v.provider.label} (${kind}, ${state})`);
+        } else {
+          console.log('  Keine Quelle von troedler ruft diesen Host ab — die Antwort ist hypothetisch.');
+        }
+
+        // The pace, in the words that fit what governs it. A flat "2 s" on an
+        // API host was wrong twice over: there is no floor there, and the real
+        // limit is the one the operator publishes.
+        console.log(
+          v.basis === 'licence'
+            ? `  Kein Höflichkeitsabstand für ${v.host} — es gilt das Limit der API, gegen das der Adapter drosselt.`
+            : `  Wartezeit zwischen Anfragen an ${v.host}: ${v.delaySeconds} s`,
+        );
+
+        if (v.robotsSkipped) console.log(`  robots.txt wurde nicht gelesen. ${v.robotsSkipped}`);
+        // "no robots.txt" and "could not read robots.txt" both permit the
+        // request and are not the same statement. The second one used to be
+        // printed as the first — a claim about a file nobody had seen.
+        if (v.robots === 'absent')
+          console.log('  (dieser Host liefert keine robots.txt — damit gilt keine Einschränkung)');
+        if (v.robots === 'unreadable')
+          console.log(
+            `  ACHTUNG: robots.txt war nicht lesbar (${v.robotsDetail}) — es wurde KEINE Regel geprüft.`,
+          );
+
+        if (v.source) console.log(`  Quellenakte: ${v.source.doc} (geprüft ${v.source.checked})`);
       },
-      {
-        print: (v) => {
-          if (asJson) return printJson(v);
-          console.log(v.allowed ? `erlaubt: ${v.url}` : `VERBOTEN: ${v.url}`);
-          if (v.detail) console.log(`  ${v.detail}`);
-          console.log(`  Wartezeit zwischen Anfragen an ${v.host}: ${v.delaySeconds} s`);
-          // "no robots.txt" and "could not read robots.txt" both permit the
-          // request and are not the same statement. The second one used to be
-          // printed as the first — a claim about a file nobody had seen.
-          if (v.robots === 'absent')
-            console.log('  (dieser Host liefert keine robots.txt — damit gilt keine Einschränkung)');
-          if (v.robots === 'unreadable')
-            console.log(
-              `  ACHTUNG: robots.txt war nicht lesbar (${v.robotsDetail}) — es wurde KEINE Regel geprüft.`,
-            );
-        },
-      },
-    );
+    });
   },
 };
 

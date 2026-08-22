@@ -12,6 +12,7 @@ export default async () => {
         userAgent: 'troedler',
         robots: null,
         enabled: false,
+        apiHost: false,
       });
       expect(v.allowed).toBe(false);
       expect(v.reason).toBe('disabled');
@@ -23,6 +24,7 @@ export default async () => {
         userAgent: 'troedler',
         robots,
         enabled: true,
+        apiHost: false,
       });
       expect(v.allowed).toBe(false);
       expect(v.reason).toBe('robots');
@@ -35,6 +37,7 @@ export default async () => {
         userAgent: 'troedler',
         robots,
         enabled: true,
+        apiHost: false,
       });
       expect(v.allowed).toBe(true);
       expect(v.reason).toBe(null);
@@ -49,6 +52,7 @@ export default async () => {
           userAgent: 'troedler',
           robots,
           enabled: true,
+          apiHost: false,
         }).delaySeconds,
       ).toBe(5);
       const fast = parseRobots('User-agent: *\nCrawl-delay: 0.1\n', '2026-08-21T12:00:00.000Z');
@@ -58,8 +62,62 @@ export default async () => {
           userAgent: 'troedler',
           robots: fast,
           enabled: true,
+          apiHost: false,
         }).delaySeconds,
       ).toBe(DEFAULT_DELAY_SECONDS);
+    });
+
+    await it('lets a documented API through the robots.txt that forbids everything', async () => {
+      // Not hypothetical. Measured 2026-08-22: `api.booklooker.de/robots.txt`
+      // is 68 344 bytes of the WEBSITE's crawl rules and ends in
+      // `User-agent: *` / `Disallow: /`. Booklooker's REST API v2.0 is
+      // documented, free keys and all, and every search fetches
+      // `/2.0/search`. Consulting that file here would refuse the licence.
+      const shopRobots = parseRobots(
+        'User-agent: Googlebot\nDisallow: /interface/\n\nUser-agent: *\n\nDisallow: /\n',
+        '2026-08-22T12:00:00.000Z',
+      );
+      const url = new URL('https://api.booklooker.de/2.0/search?token=x');
+
+      // The discriminator: the SAME file, the SAME URL, refused as a website.
+      const asWebsite = evaluate({
+        url,
+        userAgent: 'troedler',
+        robots: shopRobots,
+        enabled: true,
+        apiHost: false,
+      });
+      expect(asWebsite.allowed).toBe(false);
+      expect(asWebsite.basis).toBe('robots');
+
+      const asApi = evaluate({
+        url,
+        userAgent: 'troedler',
+        robots: shopRobots,
+        enabled: true,
+        apiHost: true,
+      });
+      expect(asApi.allowed).toBe(true);
+      expect(asApi.basis).toBe('licence');
+      // No politeness floor on an API: these operators publish their own limits
+      // and the adapters throttle against those. Two seconds here would turn
+      // twenty Discogs price lookups into forty seconds of waiting for nothing.
+      expect(asApi.delaySeconds).toBe(0);
+      expect(asApi.detail?.includes('docs/quellen/booklooker.de.md')).toBe(true);
+    });
+
+    await it('refuses a disabled API host before the licence ever applies', async () => {
+      // Order matters: the switch is checked first, so a source the user turned
+      // off is not contacted because it happens to be an API.
+      const v = evaluate({
+        url: new URL('https://api.booklooker.de/2.0/search'),
+        userAgent: 'troedler',
+        robots: null,
+        enabled: false,
+        apiHost: true,
+      });
+      expect(v.allowed).toBe(false);
+      expect(v.basis).toBe('disabled');
     });
 
     await it('treats a missing robots.txt as no restriction', async () => {
@@ -68,6 +126,7 @@ export default async () => {
         userAgent: 'troedler',
         robots: null,
         enabled: true,
+        apiHost: false,
       });
       expect(v.allowed).toBe(true);
     });

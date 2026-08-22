@@ -76,6 +76,14 @@ jobs:
       - name: Guard against unreachable kernel functions
         run: node scripts/guard-unused-kernel.mjs
 
+      # Also a grep, and for the same reason. `apiHost: true` and
+      # `access: 'official-api'` are two spellings of one fact in two files, and
+      # `troedler robots` can only reach the second one. When they drifted the
+      # command described a different program: it printed "VERBOTEN" for the URL
+      # every Booklooker search fetches.
+      - name: Guard the apiHost ⟺ access correspondence
+        run: node scripts/guard-api-hosts.mjs
+
       - name: Build the CLI bundle
         run: gjsify workspace troedler-cli build
 

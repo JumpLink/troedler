@@ -46,6 +46,38 @@ The flag is set in exactly one place — `BooklookerSession.#options()` in `pack
 with that reason in a comment. **troedler never fetches `www.booklooker.de`.** Only `Listing.url`
 points there, and a link is not a fetch.
 
+### The verification command used to contradict this file — measured 2026-08-22
+
+`troedler robots` exists so the compliance claim can be checked from outside. Run against this
+source, with the freshly built bundle, it said:
+
+```console
+$ troedler robots "https://api.booklooker.de/2.0/search?token=x&titel=y"
+VERBOTEN: https://api.booklooker.de/2.0/search?token=x&titel=y
+  robots.txt von api.booklooker.de verbietet /2.0/search?token=x&titel=y (Disallow: /).
+  Wartezeit zwischen Anfragen an api.booklooker.de: 2 s
+```
+
+That is the URL every Booklooker search fetches, lawfully, as a key holder. The command was
+rebuilding the gate from two of its four inputs — always applying robots.txt, always assuming the
+source is on — so it reported the program as a violator for doing the documented thing, and it
+downloaded these 68 344 bytes on every invocation from a host the real run never asks. The next
+reader would have "fixed" the adapter.
+
+The `apiHost` decision moved into the gate itself (`GateBasis` in `@troedler/compliance`), so there
+is one decision site and the command asks it the same question the socket layer does. It now
+answers:
+
+```console
+erlaubt: https://api.booklooker.de/2.0/search?token=x&titel=y
+  api.booklooker.de ist eine dokumentierte API. Es gilt die Lizenz des Anbieters, nicht die
+  robots.txt der Website — siehe docs/quellen/booklooker.de.md.
+  Quelle: Booklooker (offizielle API, an)
+  Kein Höflichkeitsabstand für api.booklooker.de — es gilt das Limit der API, gegen das der
+  Adapter drosselt.
+  robots.txt wurde nicht gelesen. Dokumentierte API — es gilt die Lizenz des Anbieters. …
+```
+
 `Server: myracloud` on every response: Myra Security sits in front of both hosts. It did not
 challenge, throttle or fingerprint any of the eleven probes below.
 
