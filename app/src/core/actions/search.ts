@@ -9,6 +9,7 @@
  */
 
 import {
+  CROSS_CHECK_GTINS,
   RESULTS_TOTAL,
   allSourcesUnavailable,
   clamp,
@@ -49,6 +50,14 @@ export interface SearchInput extends SearchQuery {
   readonly merge?: boolean;
   /** Group the rows by product identity across sources. */
   readonly compare?: boolean;
+  /**
+   * Barcodes to put back to the barcode-capable sources under `compare`.
+   *
+   * Defaults to `CROSS_CHECK_GTINS`. `0` switches the pass off, which is what a
+   * caller who is counting requests wants — and what the MCP server passes, so
+   * an assistant cannot quietly triple a search's cost.
+   */
+  readonly crossCheck?: number;
   readonly total?: number;
   readonly signal?: AbortSignal;
   /**
@@ -114,6 +123,7 @@ export async function search(context: Context, input: SearchInput): Promise<Sear
   const outcome = await searchAll(providers, query, {
     merge: input.merge,
     group: input.compare,
+    crossCheckGtins: input.crossCheck ?? CROSS_CHECK_GTINS,
     totalLimit: clamp(input.total, RESULTS_TOTAL),
     signal: input.signal,
     onStarted: input.onSourceStarted,

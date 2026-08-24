@@ -24,3 +24,22 @@ export function clamp(value: number | undefined, limit: Limit): number {
   if (value === undefined || !Number.isFinite(value)) return limit.default;
   return Math.max(1, Math.min(Math.floor(value), limit.max));
 }
+
+/**
+ * Barcodes a `--compare` run puts back to the sources that can search by one.
+ *
+ * A cap, not a preference. Each barcode costs one request per source that does
+ * not already have it, so six barcodes across three barcode-capable sources is
+ * up to twelve extra requests — already more than most searches spend in total.
+ * The cross-check report names what the cap left out.
+ */
+export const CROSS_CHECK_GTINS = 6;
+
+/**
+ * Rows to ask for per (source, barcode) lookup.
+ *
+ * Grouping needs to know THAT a source carries the barcode and at what price;
+ * a fourth copy of the same pressing from the same source adds nothing a group
+ * can show.
+ */
+export const CROSS_CHECK_ROWS = 3;

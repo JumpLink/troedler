@@ -19,6 +19,7 @@ import {
   RESULTS_TOTAL,
   emptinessNotice,
   gapNotice,
+  crossCheckNotice,
   mergeExcludedNotice,
   type Condition,
   type ProviderId,
@@ -106,6 +107,10 @@ export const searchCommand: CommandModule = {
         default: false,
         describe: 'Nach Produkt gruppieren: dasselbe Ding, alle Quellen nebeneinander',
       })
+      .option('cross-check', {
+        type: 'number',
+        describe: 'Mit --compare: wie viele Barcodes bei den übrigen Quellen nachgefragt werden (0 = aus)',
+      })
       .option('explain', {
         type: 'boolean',
         default: false,
@@ -145,6 +150,7 @@ export const searchCommand: CommandModule = {
           total: pickArgv<number>(raw, 'total'),
           merge: pickArgv<boolean>(raw, 'merge'),
           compare: pickArgv<boolean>(raw, 'compare'),
+          crossCheck: pickArgv<number>(raw, 'cross-check', 'crossCheck'),
         }),
       {
         print: (result) => {
@@ -160,6 +166,7 @@ export const searchCommand: CommandModule = {
               merged: result.outcome.merged,
               mergeExcluded: result.outcome.mergeExcluded,
               products: result.outcome.products,
+              crossCheck: result.outcome.crossCheck,
               reports: result.outcome.reports,
             });
             return;
@@ -176,6 +183,12 @@ export const searchCommand: CommandModule = {
               console.log('');
               n += 1;
             }
+            // The pass spends requests the query did not ask for, and its cap
+            // can leave barcodes unchecked. Both belong on screen: a partial
+            // comparison that looks complete is the failure this project is
+            // built against, wearing a different hat.
+            const cross = crossCheckNotice(result.outcome.crossCheck);
+            if (cross) console.log(`${cross}\n`);
           } else if (result.outcome.merged) {
             let n = 1;
             for (const listing of result.outcome.merged) {
