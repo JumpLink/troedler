@@ -20,11 +20,12 @@ import {
   dedupeWithinProvider,
   groupByIdentity,
   interleaveByProvider,
+  normalizeGtin,
   sortListings,
   type ListingGroup,
 } from './merge.ts';
 import { ProviderError, type ProviderErrorKind } from './errors.ts';
-import { RESULTS_PER_PROVIDER, RESULTS_TOTAL, clamp } from './limits.ts';
+import { CROSS_CHECK_ROWS, RESULTS_PER_PROVIDER, RESULTS_TOTAL, clamp } from './limits.ts';
 import { activeFilters, type SearchQuery, type SortKey } from './query.ts';
 import type { Listing, ProviderId } from './listing.ts';
 import type { MarketProvider } from './port.ts';
@@ -66,6 +67,37 @@ export interface ProviderReport {
   readonly disclaimer: string | null;
 }
 
+/**
+ * What a cross-check pass cost, and what it bought.
+ *
+ * `--compare` promises groups that span sources over the barcode, and for the
+ * one source most people came for it could not keep that promise: eBay's Browse
+ * API returns no GTIN in a search summary. Measured 2026-08-24 over
+ * `item_summary/search` — the fields are itemId, title, price, condition,
+ * seller, categories and shipping, and no product code among them. Three live
+ * `--compare` runs produced 34 groups and not one of them spanned two markets.
+ *
+ * Asking the other way round works: `item_summary/search?gtin=` answers, and so
+ * do Discogs and Booklooker. So after the fan-out, the barcodes the OTHER
+ * sources produced are put back to the sources that can search by one.
+ *
+ * It costs a request per (source, barcode) pair, which is why it is capped and
+ * why this report exists. A cost a reader cannot see is a cost they cannot
+ * decline.
+ */
+export interface CrossCheckReport {
+  /** Barcodes actually asked about. */
+  readonly gtins: number;
+  /** Barcodes left unasked because of the cap — never hidden. */
+  readonly skipped: number;
+  /** (source, barcode) pairs requested. */
+  readonly asked: number;
+  /** Rows added that the query itself had not returned. */
+  readonly added: number;
+  /** Sources that refused or broke during the pass. The groups are still shown. */
+  readonly failed: readonly ProviderId[];
+}
+
 export interface SearchOutcome {
   readonly query: SearchQuery;
   /** Rows per provider, in the requested order. The primary shape — see merge.ts. */
@@ -88,6 +120,8 @@ export interface SearchOutcome {
    * per THING, and two fields a letter apart would be read as the same field.
    */
   readonly products: readonly ListingGroup[] | null;
+  /** What the barcode cross-check cost and found. `null` when it did not run. */
+  readonly crossCheck: CrossCheckReport | null;
   readonly reports: readonly ProviderReport[];
   readonly startedAt: string;
 }
@@ -127,6 +161,15 @@ export interface SearchOptions {
    * makes it safe.
    */
   readonly onSettled?: (settled: SettledProvider) => void;
+  /**
+   * Under `group`, put the barcodes one source produced back to the OTHER
+   * sources that can search by one. The number is the cap on barcodes; `0`
+   * switches the pass off.
+   *
+   * Off unless asked for, because it spends requests that the user's query did
+   * not ask for. `CROSS_CHECK_GTINS` is what the CLI passes for `--compare`.
+   */
+  readonly crossCheckGtins?: number;
 }
 
 /**
@@ -312,10 +355,27 @@ export async function searchAll(
     }
   }
 
+  // Barcodes back to the sources that can search by one. Deliberately AFTER
+  // the fan-out and before grouping: it needs the barcodes the first pass
+  // produced, and its rows exist to make groups span sources.
+  const answered = new Set(
+    settled.filter((s) => s.report.outcome === 'ok' || s.report.outcome === 'empty').map((s) => s.report.provider),
+  );
+  const cross =
+    options.group && (options.crossCheckGtins ?? 0) > 0
+      ? await crossCheckByGtin(providers, grouped, answered, scoped, options, options.crossCheckGtins as number)
+      : null;
+
   // Grouping reads across sources, so eBay rows belong in it — the licence
   // rule is about one INTERLEAVED list, and a group that names its sources per
   // row is the isolated presentation, not the mingled one.
-  const products = options.group ? groupByIdentity([...grouped.values()].flat()) : null;
+  //
+  // The cross-checked rows go into the GROUPS and nowhere else. They are not
+  // results of the query text, so counting them in `grouped` would make every
+  // per-source report a number the source never answered with.
+  const products = options.group
+    ? groupByIdentity([...[...grouped.values()].flat(), ...(cross?.listings ?? [])])
+    : null;
 
   return {
     query,
@@ -323,8 +383,104 @@ export async function searchAll(
     merged,
     mergeExcluded: options.merge ? mergeExcluded : [],
     products,
+    crossCheck: cross?.report ?? null,
     reports: settled.map((s) => s.report),
     startedAt,
+  };
+}
+
+/**
+ * Ask the barcode-capable sources about the barcodes the others found.
+ *
+ * Order is the order the rows came back, which is each source's own relevance
+ * order — so a cap spends the budget on what a reader is most likely looking
+ * at rather than on the tail.
+ *
+ * A source is never asked about a barcode it already contributed: that request
+ * could only return rows we have.
+ */
+async function crossCheckByGtin(
+  providers: readonly MarketProvider[],
+  grouped: ReadonlyMap<ProviderId, readonly Listing[]>,
+  answered: ReadonlySet<ProviderId>,
+  query: SearchQuery,
+  options: SearchOptions,
+  cap: number,
+): Promise<{ listings: Listing[]; report: CrossCheckReport }> {
+  const holders = new Map<string, Set<ProviderId>>();
+  const order: string[] = [];
+  const seen = new Set<string>();
+  for (const [id, rows] of grouped) {
+    for (const row of rows) {
+      seen.add(`${row.provider}:${row.id}`);
+      const gtin = normalizeGtin(row.gtin);
+      if (!gtin) continue;
+      let sources = holders.get(gtin);
+      if (!sources) {
+        sources = new Set();
+        holders.set(gtin, sources);
+        order.push(gtin);
+      }
+      sources.add(id);
+    }
+  }
+
+  const capable = providers.filter(
+    (p) => p.capabilities.serverFilters.includes('gtin') && answered.has(p.capabilities.id),
+  );
+  const wanted = order.slice(0, cap);
+  const pairs: { provider: MarketProvider; gtin: string }[] = [];
+  for (const gtin of wanted) {
+    for (const p of capable) {
+      if (holders.get(gtin)?.has(p.capabilities.id)) continue;
+      pairs.push({ provider: p, gtin });
+    }
+  }
+
+  // One row is plenty per barcode per source for grouping purposes, and the
+  // cheapest thing to ask for. Every other filter of the original query still
+  // applies — a `--max-price` a reader set must not be undone by a lookup they
+  // did not type.
+  const results = await Promise.all(
+    pairs.map(({ provider, gtin }) =>
+      runOne(provider, { ...query, text: '', gtin, limit: CROSS_CHECK_ROWS }, options),
+    ),
+  );
+
+  const listings: Listing[] = [];
+  const failed = new Set<ProviderId>();
+  for (const [i, one] of results.entries()) {
+    if (one.report.outcome === 'failed') failed.add(one.report.provider);
+    // The barcode a row was FETCHED BY, written onto the row.
+    //
+    // Without this the pass adds rows and changes nothing, which is how it
+    // first ran: 6 barcodes, 12 requests, 13 rows and not one group that
+    // spanned two markets. eBay answers `item_summary/search?gtin=` with
+    // matching items and its summaries still carry no product code, so every
+    // added row fell back to the title-and-price identity and grouped with
+    // nothing.
+    //
+    // Only when the SOURCE says it filtered by the barcode server-side. Then
+    // the code is the source's own answer to "items with this barcode", not
+    // our inference about a row it happened to return.
+    const stamped = one.report.filters.serverSide.includes('gtin') ? pairs[i]?.gtin : undefined;
+    for (const row of one.listings) {
+      const key = `${row.provider}:${row.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      listings.push(stamped && normalizeGtin(row.gtin) === null ? { ...row, gtin: stamped } : row);
+    }
+  }
+
+  return {
+    listings,
+    report: {
+      gtins: wanted.length,
+      skipped: order.length - wanted.length,
+      asked: pairs.length,
+      added: listings.length,
+      failed: [...failed],
+    },
   };
 }
 

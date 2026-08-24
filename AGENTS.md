@@ -105,6 +105,11 @@ configured all look identical to "no matches" — and "no matches" is an answer 
   unreachable from production. No test can cover this: a test proves a function WORKS, never that
   anything USES it — and the cross-source grouping this project exists for sat dead behind two
   green tests until a live check asked who called it.
+- A pass that spends requests must report what it spent AND what it left out. The barcode
+  cross-check under `--compare` first shipped adding 13 rows for 12 requests and changing nothing:
+  eBay answers `item_summary/search?gtin=` with matching items whose summaries carry no product
+  code, so every added row fell back to the title-and-price identity and grouped with nothing. The
+  counters looked like work. `docs/quellen/ebay.de.md` § 7a has the measurement.
 
 `--explain` belongs to the same idea. Where a source cannot push a filter down, the kernel applies
 it to the rows that came back — a materially weaker guarantee, and the user has to be able to see

@@ -334,4 +334,186 @@ export default async () => {
       expect(outcome.reports[0].message).toBe('boom');
     });
   });
+
+  await describe('searchAll: Barcodes zurück an die Quellen, die danach suchen können', async () => {
+    /**
+     * A source that answers a text query with one row and a barcode query with
+     * a different row. The point of the pass in one fake: eBay's Browse API
+     * returns no GTIN in a search summary (measured 2026-08-24), so a group can
+     * only ever span eBay and another market if somebody asks eBay by barcode.
+     */
+    function byGtin(
+      id: ProviderId,
+      forText: readonly string[],
+      forGtin: Record<string, string>,
+    ): MarketProvider {
+      const asked: string[] = [];
+      const provider: MarketProvider & { asked: string[] } = {
+        asked,
+        capabilities: caps(id, { serverFilters: ['gtin'] }),
+        requestsUsed: () => asked.length,
+        async status() {
+          return { configured: true, problem: null };
+        },
+        async search(q: SearchQuery): Promise<ProviderResult> {
+          const hit = q.gtin ? forGtin[q.gtin] : undefined;
+          if (q.gtin) asked.push(q.gtin);
+          return {
+            provider: id,
+            listings: q.gtin
+              ? hit
+                ? [listing({ provider: id, id: hit, gtin: q.gtin })]
+                : []
+              : forText.map((row, i) => listing({ provider: id, id: row, gtin: `400000000000${i}` })),
+            applied: q.gtin ? ['gtin'] : [],
+            truncated: false,
+            totalEstimate: null,
+            requests: 1,
+            warnings: [],
+          };
+        },
+      };
+      return provider;
+    }
+
+    await it('fragt genau die Quellen, die den Barcode noch nicht haben', async () => {
+      const discogs = byGtin('discogs', ['a'], {});
+      const ebay = byGtin('ebay', [], { '4000000000000': 'e1' });
+
+      const outcome = await searchAll([discogs, ebay], query, { group: true, crossCheckGtins: 6 });
+
+      // The whole promise of `--compare`, and what it could not do before: one
+      // group, two markets.
+      const spanning = outcome.products?.filter((g) => new Set(g.listings.map((l) => l.provider)).size > 1);
+      expect(spanning?.length).toBe(1);
+      expect(outcome.crossCheck?.added).toBe(1);
+      expect(outcome.crossCheck?.asked).toBe(1);
+      // Never asked about a barcode it contributed itself — that request could
+      // only return rows already in hand.
+      expect((discogs as unknown as { asked: string[] }).asked.length).toBe(0);
+    });
+
+    await it('lässt die Quellenlisten und ihre Berichte unberührt', async () => {
+      const discogs = byGtin('discogs', ['a'], {});
+      const ebay = byGtin('ebay', [], { '4000000000000': 'e1' });
+
+      const outcome = await searchAll([discogs, ebay], query, { group: true, crossCheckGtins: 6 });
+
+      // The added row answered a barcode, not the query text. Counting it in
+      // `grouped` would make eBay's report claim a hit for a search eBay
+      // answered with nothing — this project's own failure mode, inverted.
+      expect(outcome.grouped.get('ebay')).toBe(undefined);
+      const ebayReport = outcome.reports.find((r) => r.provider === 'ebay');
+      expect(ebayReport?.outcome).toBe('empty');
+      expect(ebayReport?.count).toBe(0);
+    });
+
+    await it('nennt die Barcodes, die die Obergrenze übrig lässt', async () => {
+      const discogs = byGtin('discogs', ['a', 'b', 'c'], {});
+      const ebay = byGtin('ebay', [], { '4000000000000': 'e1', '4000000000001': 'e2' });
+
+      const outcome = await searchAll([discogs, ebay], query, { group: true, crossCheckGtins: 1 });
+
+      expect(outcome.crossCheck?.gtins).toBe(1);
+      // A cap that silently dropped the rest would make a partial comparison
+      // look like a complete one.
+      expect(outcome.crossCheck?.skipped).toBe(2);
+      expect(outcome.crossCheck?.added).toBe(1);
+    });
+
+    await it('schreibt den abgefragten Barcode auf Zeilen, die keinen tragen', async () => {
+      // The defect that made the first live run useless: eBay answers
+      // `item_summary/search?gtin=` with matching items whose summaries carry
+      // NO product code. Six barcodes, twelve requests, thirteen rows added —
+      // and every one of them fell back to the title-and-price identity, so
+      // not a single group spanned two markets. The pass had run, the numbers
+      // looked like work, and nothing had changed.
+      const discogs = byGtin('discogs', ['a'], {});
+      const mute: MarketProvider = {
+        capabilities: caps('ebay', { serverFilters: ['gtin'] }),
+        requestsUsed: () => 1,
+        async status() {
+          return { configured: true, problem: null };
+        },
+        async search(q: SearchQuery): Promise<ProviderResult> {
+          return {
+            provider: 'ebay',
+            // Answers the barcode, does not repeat it. eBay, exactly.
+            listings: q.gtin ? [listing({ provider: 'ebay', id: 'e1', gtin: null })] : [],
+            applied: q.gtin ? ['gtin'] : [],
+            truncated: false,
+            totalEstimate: null,
+            requests: 1,
+            warnings: [],
+          };
+        },
+      };
+
+      const outcome = await searchAll([discogs, mute], query, { group: true, crossCheckGtins: 6 });
+      const spanning = outcome.products?.filter((g) => new Set(g.listings.map((l) => l.provider)).size > 1);
+      expect(spanning?.length).toBe(1);
+      expect(spanning?.[0]?.identity).toBe('gtin:4000000000000');
+    });
+
+    await it('schreibt ihn NICHT, wenn die Quelle nicht selbst danach gefiltert hat', async () => {
+      // The barcode is the source's own answer to "items with this code", or
+      // it is our inference about a row it happened to return. Only the first
+      // may be written onto a row — otherwise a source that ignored the
+      // parameter and sent back its usual results would have its rows silently
+      // relabelled as that product.
+      const discogs = byGtin('discogs', ['a'], {});
+      const ignores: MarketProvider = {
+        capabilities: caps('ebay', { serverFilters: ['gtin'] }),
+        requestsUsed: () => 1,
+        async status() {
+          return { configured: true, problem: null };
+        },
+        async search(q: SearchQuery): Promise<ProviderResult> {
+          return {
+            provider: 'ebay',
+            // A different item entirely — so the only thing that could put it
+            // in the Discogs row's group is a barcode written onto it here.
+            // Answers the barcode lookup only, like the source it stands for.
+            listings: q.gtin
+              ? [
+                  listing({
+                    provider: 'ebay',
+                    id: 'e1',
+                    gtin: null,
+                    title: 'Etwas ganz anderes',
+                    price: money(999),
+                  }),
+                ]
+              : [],
+            // Says nothing about having honoured `gtin`.
+            applied: [],
+            truncated: false,
+            totalEstimate: null,
+            requests: 1,
+            warnings: [],
+          };
+        },
+      };
+
+      const outcome = await searchAll([discogs, ignores], query, { group: true, crossCheckGtins: 6 });
+      const spanning = outcome.products?.filter((g) => new Set(g.listings.map((l) => l.provider)).size > 1);
+      expect(spanning?.length).toBe(0);
+      // The row is still added and still shown — `gtin` keeps rows whose field
+      // is unknown, deliberately. It is just not claimed to be that product.
+      expect(outcome.crossCheck?.added).toBe(1);
+    });
+
+    await it('läuft gar nicht ohne group und nicht bei 0', async () => {
+      const discogs = byGtin('discogs', ['a'], {});
+      const ebay = byGtin('ebay', [], { '4000000000000': 'e1' });
+
+      const off = await searchAll([discogs, ebay], query, { crossCheckGtins: 6 });
+      expect(off.crossCheck).toBe(null);
+      expect((ebay as unknown as { asked: string[] }).asked.length).toBe(0);
+
+      const zero = await searchAll([discogs, ebay], query, { group: true, crossCheckGtins: 0 });
+      expect(zero.crossCheck).toBe(null);
+      expect((ebay as unknown as { asked: string[] }).asked.length).toBe(0);
+    });
+  });
 };

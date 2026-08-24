@@ -44,7 +44,11 @@ single band across them computes exact quartiles over nonsense.
   costs 40 € on one and 120 € on another — which is the answer you actually wanted.
 - **The same thing, side by side.** `--compare` groups the results by product across sources, over
   the barcode where there is one. A group whose rows one source keeps apart — one barcode, three
-  pressings — is shown as such and gets no single price, because it does not have one.
+  pressings — is shown as such and gets no single price, because it does not have one. Sources
+  that can search by barcode are then asked about the barcodes the others found — eBay returns no
+  product code in a search result, so without that step a group can never span eBay and anywhere
+  else. It costs a request per barcode per source, so it is capped, and the run says what it spent
+  and what the cap left out. `--cross-check 0` switches it off.
 - **Is this a good price?** A median and a quartile band over what is currently on offer, and a
   coarse verdict per listing. One band per source, over one kind of number, and it says what it
   left out. It describes the field in front of you; it does not appraise.

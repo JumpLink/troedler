@@ -20,7 +20,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { CONDITION_ORDER, fmtLocation, fmtMoney, RESULTS_PER_PROVIDER, RESULTS_TOTAL } from '@troedler/core';
-import type { Condition, ProviderId } from '@troedler/core';
+import type { Condition, Listing, ProviderId } from '@troedler/core';
 
 import { allListings, getListing, search } from '../../../core/actions/index.ts';
 import type { Context } from '../../../core/context.ts';
@@ -98,6 +98,18 @@ export function registerSearchTools(server: McpServer, context: Context): void {
               'cost where". A group flagged `ambiguous` shares an identifier but not an item (one ' +
               'barcode, several editions) and has no single price.',
           ),
+        cross_check: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe(
+            'With `compare`: how many barcodes to put back to the OTHER barcode-capable sources ' +
+              '(default 0 here). eBay returns no barcode in a search result, so without this a ' +
+              'group can never span eBay and another source. Each barcode costs one request per ' +
+              'source that does not already have it — which is why the default is off on this ' +
+              'surface and a caller has to spend it deliberately. The result reports what it cost.',
+          ),
       },
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
@@ -122,6 +134,25 @@ export function registerSearchTools(server: McpServer, context: Context): void {
           total: params.total,
           merge: params.merge ?? false,
           compare: params.compare ?? false,
+          // Off unless asked for. A CLI user watching a search spend requests
+          // can stop it; an assistant looping over queries cannot be watched
+          // the same way, so the expensive pass is opt-in on this surface.
+          crossCheck: params.cross_check ?? 0,
+        });
+
+        const row = (l: Listing) => ({
+          key: l.key,
+          title: l.title,
+          price: fmtMoney(l.totalPrice ?? l.price),
+          price_kind: l.priceKind,
+          condition: l.condition,
+          seller_type: l.sellerType,
+          delivery: l.delivery,
+          location: fmtLocation(l.location),
+          listed_at: l.listedAt,
+          ends_at: l.endsAt,
+          url: l.url,
+          verdict: result.verdicts.get(l.key),
         });
 
         const groups = [...result.outcome.grouped].map(([provider, listings]) => {
@@ -149,22 +180,23 @@ export function registerSearchTools(server: McpServer, context: Context): void {
                 : null,
             /** Why there is no band. An absent band with no reason reads as "nothing to say". */
             price_band_absent: band?.kind === 'none' ? band.reason : null,
-            listings: listings.map((l) => ({
-              key: l.key,
-              title: l.title,
-              price: fmtMoney(l.totalPrice ?? l.price),
-              price_kind: l.priceKind,
-              condition: l.condition,
-              seller_type: l.sellerType,
-              delivery: l.delivery,
-              location: fmtLocation(l.location),
-              listed_at: l.listedAt,
-              ends_at: l.endsAt,
-              url: l.url,
-              verdict: result.verdicts.get(l.key),
-            })),
+            listings: listings.map(row),
           };
         });
+
+        // Rows the cross-check pass added. They are NOT in `groups` — they did
+        // not answer the query text, they answered a barcode — but `products`
+        // references them by key, so an agent that only read `groups` would be
+        // holding a key to a row it never received.
+        const inGroups = new Set([...result.outcome.grouped.values()].flat().map((l) => l.key));
+        const crossChecked = [
+          ...new Map(
+            (result.outcome.products ?? [])
+              .flatMap((g) => g.listings)
+              .filter((l) => !inGroups.has(l.key))
+              .map((l) => [l.key, l] as const),
+          ).values(),
+        ];
 
         return mcpSuccess({
           query: params.query,
@@ -182,6 +214,10 @@ export function registerSearchTools(server: McpServer, context: Context): void {
               ambiguous: g.ambiguous,
               keys: g.listings.map((l) => l.key),
             })) ?? null,
+          /** What the barcode cross-check cost. `null` when it did not run. */
+          cross_check: result.outcome.crossCheck,
+          /** Rows the cross-check added. Referenced from `products`, absent from `groups`. */
+          cross_checked: crossChecked.map(row),
           reports: result.outcome.reports.map((r) => ({
             provider: r.provider,
             outcome: r.outcome,

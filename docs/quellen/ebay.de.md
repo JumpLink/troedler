@@ -324,11 +324,63 @@ what production actually answers is **401**, which `@troedler/http` maps to `ref
 still correct — a refused token is a stop sign, not something to retry — but the OAuth error body
 never reaches the adapter, so the diagnosis has to come from the sentence the adapter adds.
 
-Unverifiable without a keyset, and therefore **not asserted anywhere in the code**: the exact
-shape of a successful search response, whether `EXTENDED` reliably fills `itemLocation.city` on
-`EBAY_DE`, and the resource names Developer Analytics uses for the Browse pool. `quota()` reads
-those names defensively (any resource whose name is not `getItems`); re-measure once a keyset
-exists.
+Unverifiable without a keyset at the time, and therefore **not asserted anywhere in the code**:
+the exact shape of a successful search response, whether `EXTENDED` reliably fills
+`itemLocation.city` on `EBAY_DE`, and the resource names Developer Analytics uses for the Browse
+pool. `quota()` reads those names defensively (any resource whose name is not `getItems`). A
+keyset now exists — the response shape is measured below; the other two are still open.
+
+---
+
+## 7a. Measured with a real production keyset, 2026-08-24
+
+### The keyset ships disabled, and says `invalid_client`
+
+A fresh production keyset answers the token endpoint with **HTTP 401
+`{"error":"invalid_client","error_description":"client authentication failed"}`** until the
+marketplace-account-deletion decision from § 3 is made — the developer console shows *"Your keyset
+is currently disabled"*, and the API's wording is **byte-identical to a mistyped secret**. Two
+hours were spent on the wrong hypothesis because of it. The adapter's token error therefore names
+all three causes in one sentence, and that sentence is load-bearing.
+
+Exemption (*"I do not persist eBay data"*), then:
+
+| Probe | Result |
+|---|---|
+| Token endpoint, real keyset | **HTTP 200**, `token_type: Application Access Token`, `expires_in: 7200` |
+| `item_summary/search?q=…&limit=3`, `X-EBAY-C-MARKETPLACE-ID: EBAY_DE` | **HTTP 200**, 3 rows |
+| `troedler search "Metabo Bandsäge" --limit 25` | 25 rows, **2 requests**, 1 229 ms |
+
+### An `ItemSummary` carries no product code — which is why `--compare` could not work
+
+Fields present on a row of `item_summary/search` (measured, all 3 rows identical in shape):
+
+```
+additionalImages · adultOnly · availableCoupons · buyingOptions · categories · condition
+conditionId · itemCreationDate · itemHref · itemId · itemLocation · itemOriginDate
+itemWebUrl · leafCategoryIds · legacyItemId · listingMarketplaceId · price · priorityListing
+seller · shippingOptions · title · topRatedBuyingExperience
+```
+
+**No `gtin`, and no `epid`.** `getItem` has `gtin`; a search summary does not. So a group keyed on
+the barcode can never contain an eBay row that came out of a keyword search — measured over three
+live `--compare` runs: **34 groups, none spanning two markets**, with eBay configured and
+answering.
+
+### Asking by barcode works, and answers without repeating it
+
+`item_summary/search?gtin=<code>` is supported and matches:
+
+| Barcode | Origin | eBay `total` |
+|---|---|---|
+| `5099902987613` | Discogs, 2016 European vinyl reissue | 7 |
+| `9780007232291` | Booklooker, ISBN of the Harris book | 4 |
+
+This is what `crossCheckByGtin` in `@troedler/core` uses. **The rows it returns still carry no
+`gtin`**, so the kernel writes the barcode it asked for onto them — and only when the report says
+the source applied `gtin` server-side. Without that step the pass spent 12 requests, added 13 rows
+and produced exactly zero cross-source groups: work that looked like work. With it, the same query
+produced **5 groups spanning Discogs and eBay** out of 47.
 
 ---
 

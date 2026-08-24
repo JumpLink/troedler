@@ -35,7 +35,7 @@ import {
 import { isTransient } from './errors.ts';
 import type { Listing, Location, ProviderId } from './listing.ts';
 import { BASIS_LABEL, type PriceBand } from './stats.ts';
-import type { ProviderReport } from './search.ts';
+import type { CrossCheckReport, ProviderReport } from './search.ts';
 
 /** The label for a source, falling back to its id. Four copies before this existed. */
 export function providerLabel(id: ProviderId | string): string {
@@ -273,6 +273,31 @@ export function providerState(source: {
   if (!source.enabled) return 'aus';
   if (!source.configured) return 'an, aber nicht konfiguriert';
   return source.problem === null ? 'bereit' : 'an, aber nicht nutzbar';
+}
+
+/**
+ * What the barcode cross-check cost and what it bought — or `null` when there
+ * is nothing to say.
+ *
+ * Never silently: the pass spends requests the reader's query did not ask for,
+ * and a cap that quietly dropped barcodes would make a partial comparison look
+ * like a complete one. Both numbers are therefore in the sentence.
+ */
+export function crossCheckNotice(check: CrossCheckReport | null): string | null {
+  if (check === null || check.asked === 0) return null;
+  const parts = [
+    `${check.gtins} Barcode(s) bei den übrigen Quellen gegengeprüft (${check.asked} Abfrage(n))`,
+  ];
+  parts.push(
+    check.added > 0 ? `${check.added} zusätzliche(s) Angebot(e)` : 'keine zusätzlichen Angebote',
+  );
+  if (check.skipped > 0) {
+    parts.push(`${check.skipped} weitere(r) Barcode(s) NICHT geprüft — Obergrenze erreicht`);
+  }
+  if (check.failed.length > 0) {
+    parts.push(`ohne Antwort: ${check.failed.map(providerLabel).join(', ')}`);
+  }
+  return `${parts.join(' · ')}.`;
 }
 
 /** What a search asked for that cannot take effect, said before the results. */
