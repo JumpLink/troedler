@@ -273,13 +273,34 @@ export default async () => {
   });
 
   await describe('present: der Rest, den zwei Oberflächen teilen', async () => {
-    await it('kennt die drei Zustände einer Quelle — und nur diese drei', async () => {
+    await it('kennt die vier Zustände einer Quelle — und nur diese vier', async () => {
       // Two views said this three ways and two of them disagreed: one printed
       // „an", the other „bereit" for the same state.
-      expect(providerState({ enabled: false, configured: false })).toBe('aus');
-      expect(providerState({ enabled: false, configured: true })).toBe('aus');
-      expect(providerState({ enabled: true, configured: true })).toBe('bereit');
-      expect(providerState({ enabled: true, configured: false })).toBe('an, aber nicht konfiguriert');
+      expect(providerState({ enabled: false, configured: false, problem: null })).toBe('aus');
+      expect(providerState({ enabled: false, configured: true, problem: null })).toBe('aus');
+      expect(providerState({ enabled: true, configured: true, problem: null })).toBe('bereit');
+      expect(providerState({ enabled: true, configured: false, problem: 'Schlüssel fehlt' })).toBe(
+        'an, aber nicht konfiguriert',
+      );
+    });
+
+    await it('nennt eine Quelle nicht „bereit", deren Probe fehlgeschlagen ist', async () => {
+      // The state the two booleans could not express, and the reason this
+      // function now takes a third field. eBay answered its own token request
+      // with 401 — a keyset that existed, spelled correctly, and disabled at
+      // eBay's end — and `check` printed „ebay bereit" directly above it.
+      expect(
+        providerState({
+          enabled: true,
+          configured: true,
+          problem: 'eBay lehnte den Token-Abruf ab (HTTP 401).',
+        }),
+      ).toBe('an, aber nicht nutzbar');
+      // Justiz-Auktion is the permanent, by-design member of the same state:
+      // reachable, needs no credentials, and cannot be searched at all.
+      expect(
+        providerState({ enabled: true, configured: true, problem: 'Suche nur als POST mit Sitzung.' }),
+      ).toBe('an, aber nicht nutzbar');
     });
 
     await it('unterscheidet „niemand hat geantwortet" von „nichts gefunden"', async () => {

@@ -253,10 +253,26 @@ export function bandText(band: PriceBand): BandText {
  * Two views said this three ways and two of them disagreed — one printed „an",
  * the other „bereit" for the same state. A GUI toggle row would have been the
  * third spelling.
+ *
+ * FOUR states, not three, because `MarketProvider.status()` promises four:
+ * off, on-but-unconfigured, on-and-working, and on-with-credentials-that-do-not
+ * work. Reading only the two booleans collapsed the last pair, and the result
+ * was `check` printing „ebay bereit" one line above eBay's own 401 — a keyset
+ * that existed, was spelled correctly, and was disabled at the operator's end.
+ * Justiz-Auktion lands in the same state permanently and by design.
+ *
+ * `problem` is REQUIRED for that reason. Optional, a caller that forgets it
+ * gets „bereit" for a broken source, which is exactly the sentence this
+ * function was written to stop two views from disagreeing about.
  */
-export function providerState(source: { enabled: boolean; configured: boolean }): string {
+export function providerState(source: {
+  enabled: boolean;
+  configured: boolean;
+  problem: string | null;
+}): string {
   if (!source.enabled) return 'aus';
-  return source.configured ? 'bereit' : 'an, aber nicht konfiguriert';
+  if (!source.configured) return 'an, aber nicht konfiguriert';
+  return source.problem === null ? 'bereit' : 'an, aber nicht nutzbar';
 }
 
 /** What a search asked for that cannot take effect, said before the results. */
