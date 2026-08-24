@@ -79,8 +79,13 @@ export const providersCommand: CommandModule = {
         if (asJson) return printJson(views);
         for (const v of views) {
           console.log(`${v.id.padEnd(16)} ${providerState(v).padEnd(28)} ${v.access}  ${v.host}`);
+          // A problem is printed whenever there IS one. The gate below used to
+          // cover this line too — show, or off, or unconfigured — which excluded
+          // precisely the state the port contract calls "configured and broken":
+          // `providers list` printed „ebay bereit" and swallowed a 401 from the
+          // token endpoint without a word.
+          if (v.problem) console.log(`    Problem: ${v.problem}`);
           if (action === 'show' || !v.enabled || !v.configured) {
-            if (v.problem) console.log(`    Problem: ${v.problem}`);
             if (v.note) console.log(`    ${v.note.split('\n').join('\n    ')}`);
           }
           if (action === 'show') {
