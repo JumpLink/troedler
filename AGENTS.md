@@ -154,13 +154,24 @@ the wrong file.
 
 A long-running FOREGROUND GJS process is killed by the werkstatt sandbox (Exit 144). Launch the
 MCP server or the GUI via **run_in_background**, fully detached
-(`(setsid env … npx gjsify run … >log 2>&1 </dev/null &)`) — and kill it with `pkill -x gjs`,
-never `pkill -f troedler-app`, which matches the launching shell and kills that instead.
+(`(setsid env … npx gjsify run … >log 2>&1 </dev/null &)`).
+
+Kill it by PID, and find that PID by reading `/proc/<pid>/cmdline`:
+
+```bash
+for p in $(pgrep -x gjs); do tr '\0' ' ' < /proc/$p/cmdline | grep -q troedler && kill $p; done
+```
+
+Neither shortcut works. `pkill -f troedler-app` matches the launching shell and kills that
+instead. And `pkill -x gjs` is worse than it looks: on a werkstatt workstation that command
+matched 52 processes — `org.gnome.Shell.Notifications`, `org.gnome.ScreenSaver`, the postbote and
+buchhaltung MCP servers, and the map-editor's signalling server. It kills the desktop to close one
+window.
 
 ## The three surfaces, and the seam under them
 
 CLI, MCP server and the **native GNOME app** are three renderings of the same actions in
-`app/src/core/actions/`. Two rules keep them from drifting, and both have an incident behind them:
+`app/src/core/actions/`. Three rules keep them from drifting, and each has an incident behind it:
 
 - **Every sentence a person could quote comes from `@troedler/core`'s `present.ts`.** A view
   decides ANSI codes, column widths and Pango classes — nothing else. Before the extraction the
@@ -170,6 +181,14 @@ CLI, MCP server and the **native GNOME app** are three renderings of the same ac
   top-level `gi://Adw`: folding it into the CLI would make every `troedler search` in a terminal
   load GTK and fail without a display. Measured after the split — `gi://Adw|gi://Gtk` appears 0×
   in the CLI bundle and 1× in the app bundle.
+- **A view never lets a core sentence be parsed.** `Adw.PreferencesRow` takes title and subtitle as
+  Pango markup by DEFAULT, so `new Adw.ActionRow({ subtitle })` runs a German sentence through an
+  XML parser. Justiz-Auktion's ends in `<Auktions-ID>`; Pango refused the whole string and the row
+  rendered EMPTY — the one explanation somebody opened that expander to read, with only a
+  Gtk-WARNING on a stderr nobody reads. Pass `useMarkup: false` in the CONSTRUCTOR: the parse
+  happens on assignment, so a later `set_use_markup(false)` is too late (measured — the warning
+  survived it). The same trap is waiting on any row that would carry a listing title, which is
+  text other people wrote.
 
 The app entry point starts with `import 'dotenv/config'` for the same reason the CLI's does.
 Leaving it out was a real defect: `troedler check` reported Booklooker „bereit" while the window

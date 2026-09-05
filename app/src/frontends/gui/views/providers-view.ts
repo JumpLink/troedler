@@ -78,10 +78,11 @@ export class ProvidersView extends Gtk.Box {
   }
 
   private buildRow(view: ProviderView): Gtk.Widget {
-    const row = new Adw.ExpanderRow({
-      title: view.label,
-      subtitle: `${providerState(view)} · ${view.access === 'official-api' ? 'offizielle API' : 'öffentliches HTML'} · ${view.host}`,
-    });
+    const row = new Adw.ExpanderRow({ useMarkup: false });
+    row.set_title(view.label);
+    row.set_subtitle(
+      `${providerState(view)} · ${view.access === 'official-api' ? 'offizielle API' : 'öffentliches HTML'} · ${view.host}`,
+    );
 
     const toggle = new Gtk.Switch({ active: view.enabled, valign: Gtk.Align.CENTER });
     toggle.connect('state-set', (_widget, state: boolean) => {
@@ -108,8 +109,25 @@ export class ProvidersView extends Gtk.Box {
     return row;
   }
 
+  /**
+   * `Adw.PreferencesRow` parses title and subtitle as Pango markup by default,
+   * and every string these rows carry is a `@troedler/core` sentence written
+   * for people. Justiz-Auktion's ends «`troedler show
+   * justiz-auktion:<Auktions-ID>`»; Pango read `<Auktions-ID>` as an unclosed
+   * tag, refused the WHOLE string, and left the row blank — the explanation
+   * somebody opened the expander to read, gone, with nothing but a Gtk-WARNING
+   * on a stderr no one watches. A view may choose classes; it does not get to
+   * parse a core sentence.
+   *
+   * `useMarkup` belongs in the constructor, not in a call after it: the parse
+   * happens when the text is assigned, so a row built with `subtitle` in its
+   * dict has already refused the string before `set_use_markup(false)` lands.
+   * Measured — the warning survived exactly that ordering.
+   */
   private detail(title: string, value: string): Adw.ActionRow {
-    const row = new Adw.ActionRow({ title, subtitle: value });
+    const row = new Adw.ActionRow({ useMarkup: false });
+    row.set_title(title);
+    row.set_subtitle(value);
     row.set_subtitle_lines(0);
     row.set_title_lines(0);
     return row;
