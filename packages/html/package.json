@@ -15,6 +15,6 @@
     "src"
   ],
   "dependencies": {
-    "@gjsify/domparser": "0.42.0"
+    "@gjsify/domparser": "0.47.0"
   }
 }

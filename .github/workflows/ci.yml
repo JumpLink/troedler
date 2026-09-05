@@ -84,6 +84,14 @@ jobs:
       - name: Guard the apiHost ⟺ access correspondence
         run: node scripts/guard-api-hosts.mjs
 
+      # Also a grep. `new URL()` on GJS has exactly ONE working setter, `search`;
+      # the other nine throw "setting getter-only property" while every one of
+      # them works on Node — so the type check, the review and the Node test run
+      # all pass and the program dies on the runtime it ships on. Re-measure at
+      # each gjsify bump and delete only the lines that turn green.
+      - name: Guard against URL setters that throw under GJS
+        run: node scripts/guard-url-setters.mjs
+
       # Both bundles. The GUI is a separate entry point because `import Adw`
       # becomes a top-level `gi://Adw` — building it here is what keeps that
       # split from rotting, since nothing else in CI imports a widget.

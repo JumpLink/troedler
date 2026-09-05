@@ -13,6 +13,11 @@
  * round-trips a canary row at startup. If reads are being swallowed, the
  * program says so on the first command rather than reporting an empty
  * watchlist forever.
+ *
+ * // gjsify gap (unfixed, no PR yet): still true on 0.47.0. Measured under gjs
+ * // 1.88.1 at the bump — `db.prepare('SELECT * FROM does_not_exist').get()`
+ * // returns `undefined` instead of throwing, where Node throws. So the canary
+ * // below is LOAD-BEARING and must not be "simplified" away as a startup cost.
  */
 
 import { mkdirSync } from 'node:fs';

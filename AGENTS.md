@@ -206,13 +206,18 @@ and every state worth checking is on the other side of a query.
 gjsify is a first-party dependency, not vendored third-party code. A missing capability gets fixed
 in the `gjsify/gjsify` submodule with a test, and troedler picks it up on a version bump.
 
-**Two gaps went this way and both are closed as of gjsify 0.42.0** — worth keeping because they
-are what the rule is for, and because both bit on GJS while Node stayed green:
+**Two gaps went this way and one of them is closed as of gjsify 0.42.0** — worth keeping because
+they are what the rule is for, and because both bit on GJS while Node stayed green:
 
 - **`URL` was immutable.** Every setter threw, and `url.searchParams` handed back a DETACHED copy
   whose `set`/`append`/`delete` reported success and were discarded. Discogs' `/database/search`
   therefore went out with no query at all and answered with 34.7 million rows of everything.
-  Fixed upstream (PR #1245).
+  PR #1245 fixed `searchParams` and the `search` setter — **and only those.** Measured again at the
+  0.47.0 bump, one setter at a time: `search` works, and `protocol`, `username`, `password`, `host`,
+  `hostname`, `port`, `pathname`, `hash` and `href` all still throw `setting getter-only property`,
+  where all ten work on Node. `scripts/guard-url-setters.mjs` refuses the nine in CI. The lesson is
+  in that guard's header: its predecessor covered `pathname` too and was deleted WHOLE at the 0.42.0
+  bump because the part that had been measured turned green.
 - **`@gjsify/domparser` was an XML parser.** No HTML5 tree construction, no entity decoding, and
   `querySelectorAll` matched tag names only — on a real 329 KB results page, `.aditem` → 0 hits.
   `@troedler/html` wrapped three npm parsers until PR #1250 landed an HTML5 tokenizer, a tree
@@ -228,6 +233,13 @@ result, not the note — and the measurement has to be able to FAIL. For the URL
 running the same 13-check probe against 0.41.0 (6 red) and 0.42.0 (all green); for the parser swap
 it meant running both parsers over the same live pages and diffing what the adapters made of them
 (byte-identical over 10 auction cards, one full detail page and 20 classified ads).
+
+A probe that only covers what the release note mentions measures the note. The 0.42.0 → 0.47.0 bump
+was checked with a 25-check capability probe built and run under gjs on BOTH versions — URL, HTML5
+tree construction, entity decoding, selectors, and a `node:sqlite` read round-trip. Output was
+byte-identical, 22 green and 3 red on each, which is the useful result twice over: no regression,
+and the three reds are two open gaps nobody had written down (the URL setters above, and `all()` /
+`get()` still swallowing SQL errors — see the marker in `packages/store/src/db.ts`).
 
 Watch for spec differences the old library papered over. The one that bit: `tagName` is UPPERCASE
 in the DOM and was lowercase in `domhandler`, so `node.tagName === 'dt'` silently stopped matching
