@@ -4,7 +4,15 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { ConfigError, EMPTY_CONFIG, loadConfig, mutateConfig, saveConfig } from '@troedler/store';
+import {
+  ConfigError,
+  DEFAULT_LAYOUT,
+  EMPTY_CONFIG,
+  layoutOf,
+  loadConfig,
+  mutateConfig,
+  saveConfig,
+} from '@troedler/store';
 
 export default async () => {
   const withTempDir = async (fn: (dir: string) => Promise<void> | void) => {
@@ -15,6 +23,44 @@ export default async () => {
       rmSync(dir, { recursive: true, force: true });
     }
   };
+
+  await describe('the ui section', async () => {
+    await it('survives a save/load round trip', async () => {
+      // `validate` REBUILDS the config object rather than passing the parsed one
+      // through, so a section it forgets to name is dropped on the next read.
+      // That is exactly what happened to `ui` when it was added: the settings
+      // dialog wrote it, the very next `loadConfig` threw it away, and the whole
+      // setting was inert while the type check, the lint and the build stayed
+      // green. This test is what makes that impossible to repeat quietly.
+      await withTempDir((dir) => {
+        const path = join(dir, 'config.json');
+        mutateConfig(path, (config) => ({ ...config, ui: { layout: 'sections' } }));
+        expect(loadConfig(path).ui?.layout).toBe('sections');
+        expect(layoutOf(loadConfig(path))).toBe('sections');
+      });
+    });
+
+    await it('falls back rather than trusting a value it does not know', async () => {
+      await withTempDir((dir) => {
+        const path = join(dir, 'config.json');
+        writeFileSync(
+          path,
+          JSON.stringify({ version: 1, providers: {}, defaults: {}, ui: { layout: 'karussell' } }),
+        );
+        expect(layoutOf(loadConfig(path))).toBe(DEFAULT_LAYOUT);
+      });
+    });
+
+    await it('is absent for a config that never had one', async () => {
+      // The discriminator for the round trip above: an empty `ui` must NOT read
+      // as „sections", or the first test would pass on a stuck default.
+      await withTempDir((dir) => {
+        const path = join(dir, 'config.json');
+        saveConfig(path, EMPTY_CONFIG);
+        expect(layoutOf(loadConfig(path))).toBe(DEFAULT_LAYOUT);
+      });
+    });
+  });
 
   await describe('loadConfig', async () => {
     await it('treats a missing file as a first run, not an error', async () => {

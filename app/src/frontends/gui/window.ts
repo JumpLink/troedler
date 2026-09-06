@@ -2,9 +2,9 @@
  * The window: two views, a switcher, and nothing between them.
  *
  *   Adw.ToolbarView
- *   ├─ HeaderBar [ ViewSwitcher: Suche · Quellen ]        [ ☰ ]
+ *   ├─ HeaderBar [ ViewSwitcher: Suche · Quellen ]        [ ⚙ ]
  *   └─ Adw.ViewStack
- *      ├─ Suche    — one panel per source, settling as each answers
+ *      ├─ Suche    — cards, as a grid or grouped by source, settling as each answers
  *      └─ Quellen  — the switches, and the refusal that guards two of them
  *
  * Two views take a switcher, not a sidebar. `createNavShell` from
@@ -18,11 +18,15 @@
 
 import Adw from '@girs/adw-1';
 import GObject from '@girs/gobject-2.0';
+import Gtk from '@girs/gtk-4.0';
+
+import type { ResultLayout } from '@troedler/store';
 
 import type { Context } from '../../core/context.ts';
 import { APP_NAME } from './constants.ts';
 import { ProvidersView } from './views/providers-view.ts';
 import { SearchView } from './views/search-view.ts';
+import { SettingsDialog } from './views/settings-dialog.ts';
 
 export class MainWindow extends Adw.ApplicationWindow {
   static {
@@ -33,7 +37,11 @@ export class MainWindow extends Adw.ApplicationWindow {
   private readonly providersView: ProvidersView;
   private providersLoaded = false;
 
-  constructor(app: Adw.Application, context: Context, hooks: { view?: string; query?: string }) {
+  constructor(
+    app: Adw.Application,
+    context: Context,
+    hooks: { view?: string; query?: string; layout?: ResultLayout },
+  ) {
     super({ application: app, title: APP_NAME, defaultWidth: 980, defaultHeight: 720 });
 
     this.providersView = new ProvidersView(context);
@@ -44,6 +52,20 @@ export class MainWindow extends Adw.ApplicationWindow {
 
     const header = new Adw.HeaderBar();
     header.set_title_widget(new Adw.ViewSwitcher({ stack: this.stack, policy: Adw.ViewSwitcherPolicy.WIDE }));
+
+    // A settings button rather than a hamburger: there is exactly one thing in
+    // there, and a menu whose only entry is „Einstellungen" is a click in front
+    // of a click.
+    const settings = new Gtk.Button({
+      iconName: 'preferences-system-symbolic',
+      tooltipText: 'Einstellungen',
+    });
+    settings.connect('clicked', () => {
+      // The dialog writes the config and reloads the context; the window is
+      // what knows which view has to re-lay itself afterwards.
+      new SettingsDialog(context, (layout) => searchView.setLayout(layout)).present(this);
+    });
+    header.pack_end(settings);
 
     const toolbar = new Adw.ToolbarView();
     toolbar.add_top_bar(header);
@@ -64,6 +86,9 @@ export class MainWindow extends Adw.ApplicationWindow {
     if (hooks.view) this.stack.set_visible_child_name(hooks.view);
     this.onViewShown();
     if (hooks.query) searchView.runQuery(hooks.query);
+    // AFTER the query, deliberately: this is the re-lay path the settings dialog
+    // triggers, and re-laying nothing would prove nothing.
+    if (hooks.layout) searchView.setLayout(hooks.layout);
   }
 
   private onViewShown(): void {

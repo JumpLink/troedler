@@ -33,7 +33,7 @@ import Gtk from '@girs/gtk-4.0';
 import { readAppDevHooks, runAdwaitaApp } from '@gjsify/adwaita-app';
 
 import { createContext } from '../../core/context.ts';
-import { APP_ID, APP_NAME, APP_VERSION, DEV_HOOK_PREFIX, QUERY_HOOK } from './constants.ts';
+import { APP_ID, APP_NAME, APP_VERSION, DEV_HOOK_PREFIX, LAYOUT_HOOK, QUERY_HOOK } from './constants.ts';
 import { APP_CSS } from './css.ts';
 import { MainWindow } from './window.ts';
 
@@ -42,6 +42,8 @@ void Gtk;
 
 const hooks = readAppDevHooks({ prefix: DEV_HOOK_PREFIX });
 const query = process.env[QUERY_HOOK]?.trim() || undefined;
+const rawLayout = process.env[LAYOUT_HOOK]?.trim();
+const layout = rawLayout === 'grid' || rawLayout === 'sections' ? rawLayout : undefined;
 const context = createContext();
 
 const status = await runAdwaitaApp({
@@ -59,7 +61,7 @@ const status = await runAdwaitaApp({
       'im eigenen Tempo, unter dem eigenen Namen. Die Treffer bleiben nach Quelle getrennt, und ' +
       'jede Quelle sagt, ob sie geantwortet hat. Derselbe Kern wie die Kommandozeile.',
   },
-  createWindow: (app) => new MainWindow(app, context, { view: hooks.view, query }),
+  createWindow: (app) => new MainWindow(app, context, { view: hooks.view, query, layout }),
 });
 
 context.closeStore();

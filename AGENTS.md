@@ -201,6 +201,22 @@ CLI, MCP server and the **native GNOME app** are three renderings of the same ac
   survived it). The same trap is waiting on any row that would carry a listing title, which is
   text other people wrote.
 
+**Two layouts, one invariant.** The results area is either a price-sorted grid of cards over every
+source or a block per source, chosen in the settings (`config.ui.layout`, GUI-only — the CLI has
+one layout and always groups). What is NOT switchable is the accounting: the grid carries a
+`SourceStrip` with the same five report states, laid out before the fan-out just as the panels are.
+A layout may change how offers are grouped; it may not change whether a skipped source is visible.
+Switching re-lays the results already held rather than searching again — a preference is not a
+reason to spend somebody's rate limit twice.
+
+Two traps this cost, both measured: `validate()` in `config.ts` REBUILDS the config object, so the
+new `ui` section was dropped on every load and the whole setting was inert while the type check,
+the lint and the build stayed green (`config.test.ts` now round-trips it). And `Gtk.Picture` reports
+its paintable's INTRINSIC width as its natural width, which in a homogeneous `Gtk.FlowBox` makes one
+1600 px photograph set the width of every card — two columns where four fit. `Adw.Clamp` is the only
+thing in this toolkit that caps a natural width; `max-width-chars` on a label that also ellipsizes
+does not.
+
 The app entry point starts with `import 'dotenv/config'` for the same reason the CLI's does.
 Leaving it out was a real defect: `troedler check` reported Booklooker „bereit" while the window
 beside it said „Kein BOOKLOOKER_API_KEY gesetzt" — same machine, same `.env`.
@@ -208,8 +224,12 @@ beside it said „Kein BOOKLOOKER_API_KEY gesetzt" — same machine, same `.env`
 **Driving it as an agent.** `GJSIFY_DEVTOOLS=1` exports `org.gjsify.Devtools` at
 `/eu/jumplink/Troedler/devtools`; `Screenshot`, `DumpTree`, `FindWidget` and `ActivateWidget` work
 over `gdbus`. The devtools plane cannot type into an entry — `SendKey` takes accelerators — so
-**`TR_APP_QUERY=<begriff>` runs a search at startup**, and `TR_APP_VIEW=suche|quellen` opens a
-view. Without the query hook the only screenshottable state of the search view is the empty one,
+**`TR_APP_QUERY=<begriff>` runs a search at startup**, `TR_APP_VIEW=suche|quellen` opens a
+view, and `TR_APP_LAYOUT=grid|sections` switches the layout AFTER the query through the same
+`setLayout` the settings dialog calls. That last one exists because the devtools plane cannot
+operate an `Adw.ComboRow` at all — `ActivateWidget` on its list row reports `true` and changes no
+selection, `SendKey` answers `false` — so the live switch would otherwise be the one path here
+that can only be checked by reading it. Without the query hook the only screenshottable state of the search view is the empty one,
 and every state worth checking is on the other side of a query.
 
 ## Fix gjsify gaps at the core

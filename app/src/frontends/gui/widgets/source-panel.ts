@@ -27,8 +27,10 @@ import Pango from '@girs/pango-1.0';
 
 import { bandText, explainLines, reportLine, type ProviderId } from '@troedler/core';
 
+import type { Context } from '../../../core/context.ts';
 import type { SourceResult } from '../../../core/actions/index.ts';
-import { ListingRow } from './listing-row.ts';
+import { OfferGrid } from './offer-grid.ts';
+import { outcomeClasses } from './outcome.ts';
 
 function dim(text: string, extra: string[] = []): Gtk.Label {
   return new Gtk.Label({
@@ -49,6 +51,9 @@ export class SourcePanel extends Adw.Bin {
   }
 
   readonly provider: ProviderId;
+  private readonly context: Context;
+  /** The market's own name. `heading` becomes the report sentence on settle. */
+  private readonly sourceLabel: string;
   private readonly box = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 4 });
   // Wrapping, and it is not cosmetic: a skipped source's whole worth is the
   // SENTENCE saying why, and „übersprungen — EBAY_CLIENT_ID und …" ran off the
@@ -63,9 +68,11 @@ export class SourcePanel extends Adw.Bin {
   private readonly body = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 4 });
   private explain: boolean;
 
-  constructor(provider: ProviderId, label: string, explain: boolean) {
+  constructor(context: Context, provider: ProviderId, label: string, explain: boolean) {
     super({ cssClasses: ['card'], marginTop: 6, marginBottom: 6 });
     this.provider = provider;
+    this.context = context;
+    this.sourceLabel = label;
     this.explain = explain;
 
     this.box.set_margin_top(12);
@@ -109,12 +116,23 @@ export class SourcePanel extends Adw.Bin {
     // Only a failure earns the error colour. `skipped` is a decision — an
     // operator's terms, a missing key — and painting it red would tell a person
     // something broke when nothing did.
-    this.heading.set_css_classes(report.outcome === 'failed' ? ['title-4', 'error'] : ['title-4']);
+    this.heading.set_css_classes(outcomeClasses(report.outcome, ['title-4']));
 
     for (const warning of report.warnings) this.body.append(dim(`Hinweis: ${warning}`));
 
-    for (const listing of result.listings) {
-      this.body.append(new ListingRow(listing, result.verdicts.get(listing.key), now));
+    if (result.listings.length > 0) {
+      // Cards here too — the layouts differ in how the results are GROUPED, not
+      // in what an offer looks like. Two card designs would be two places to
+      // change the day a fact moves.
+      const grid = new OfferGrid(this.context, { showSource: false, sorted: false });
+      grid.set_margin_start(8);
+      grid.set_margin_end(8);
+      grid.set_margin_top(4);
+      grid.set_margin_bottom(4);
+      for (const listing of result.listings) {
+        grid.add(listing, this.sourceLabel, result.verdicts.get(listing.key), now);
+      }
+      this.body.append(grid);
     }
 
     if (result.band) {
@@ -129,7 +147,7 @@ export class SourcePanel extends Adw.Bin {
             marginStart: 12,
             marginEnd: 12,
             wrap: true,
-            cssClasses: ['numeric'],
+            cssClasses: ['band'],
           }),
         );
       } else {

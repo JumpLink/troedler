@@ -121,9 +121,22 @@ The window:
 gjsify workspace troedler-cli start:app
 ```
 
-Two screens. **Suche** lays out one panel per source *before* asking any of them and settles each
-in place, so a result never appears without the account of where it came from — and a source that
-was skipped, refused or broke never looks like a source with nothing to offer. **Quellen** lists every source with its switch; turning on one whose terms forbid automated access
+Two screens. **Suche** shows the offers as cards with their photographs, in one of two layouts you
+choose in the settings:
+
+- **a grid over every source**, cheapest first, each card badged with the market it came from — the
+  shop view, and the quickest way to see that the same saw is 40 € here and 120 € there;
+- **a block per source**, which is where the price bands live, because a band is only meaningful
+  over one kind of number. An auction's current bid, a dealer's asking price and „cheapest of 191
+  copies worldwide" are three different things, and one band across them computes exact quartiles
+  over nonsense.
+
+Either way the layout is laid out *before* any source is asked and each settles in place, so a
+result never appears without the account of where it came from — and a source that was skipped,
+refused or broke never looks like a source with nothing to offer. Switching the layout re-lays the
+results you already have; it does not search again.
+
+**Quellen** lists every source with its switch; turning on one whose terms forbid automated access
 puts the operator's clause on screen and asks, because that is a decision for a person and the date
 lands in the config.
 

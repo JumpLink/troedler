@@ -15,6 +15,13 @@
  *  - **Say "nothing found" when nobody answered.** Those are different facts
  *    and only the second means the thing is not out there second-hand.
  *
+ * TWO LAYOUTS, one invariant. Since 2026-09-06 the results area can be a single
+ * price-sorted grid of cards („like a shop") or the source blocks it started as,
+ * switchable in the settings. What is NOT switchable is the accounting: the grid
+ * carries a `SourceStrip` with the same five report states above it, laid out
+ * before the fan-out just as the panels are. A layout may change how offers are
+ * grouped; it may not change whether a skipped source is visible.
+ *
  * The compare view — `--compare`, one product across the sources that carry it
  * — is deliberately not here yet, and the reason is a measurement rather than a
  * scope cut. Only eBay, Discogs and Booklooker can emit a GTIN at all; the other
@@ -33,10 +40,13 @@ import Gtk from '@girs/gtk-4.0';
 import Pango from '@girs/pango-1.0';
 
 import { emptinessNotice, gapNotice, type ProviderId } from '@troedler/core';
+import { layoutOf, type ResultLayout } from '@troedler/store';
 
 import { search, type SourceResult } from '../../../core/actions/index.ts';
 import { isEnabled, type Context } from '../../../core/context.ts';
+import { OfferGrid } from '../widgets/offer-grid.ts';
 import { SourcePanel } from '../widgets/source-panel.ts';
+import { SourceStrip } from '../widgets/source-strip.ts';
 
 export class SearchView extends Gtk.Box {
   static {
@@ -75,11 +85,23 @@ export class SearchView extends Gtk.Box {
     vscrollbarPolicy: Gtk.PolicyType.AUTOMATIC,
   });
   private readonly panels = new Map<ProviderId, SourcePanel>();
+  private readonly strip = new SourceStrip();
+  private readonly grid: OfferGrid;
+  private readonly labels = new Map<ProviderId, string>();
+  /**
+   * Everything that has settled in this search, kept so that switching the
+   * layout re-lays the SAME results instead of asking the marketplaces again.
+   * A preference is not a reason to spend somebody's rate limit twice.
+   */
+  private readonly settled: { result: SourceResult; now: number }[] = [];
+  private layout: ResultLayout;
   private running: AbortController | null = null;
 
   constructor(context: Context) {
     super({ orientation: Gtk.Orientation.VERTICAL });
     this.context = context;
+    this.layout = layoutOf(context.config);
+    this.grid = new OfferGrid(context, { showSource: true, sorted: true });
 
     const bar = new Gtk.Box({
       orientation: Gtk.Orientation.HORIZONTAL,
@@ -174,14 +196,11 @@ export class SearchView extends Gtk.Box {
     this.clearChildren(this.results);
     this.panels.clear();
 
-    const explain = this.explain.get_active();
-    // Every enabled source gets its panel now, in list order, so the results
-    // area can never appear without the accounting that belongs beside it.
-    for (const { id, label } of this.askable()) {
-      const panel = new SourcePanel(id, label, explain);
-      this.panels.set(id, panel);
-      this.results.append(panel);
-    }
+    this.settled.length = 0;
+    // Every enabled source gets its place now, in list order, so the results
+    // area can never appear without the accounting that belongs beside it —
+    // panels in one layout, strip lines in the other, same guarantee.
+    this.prepare(this.askable());
 
     const euros = Number.parseFloat(this.maxPrice.get_text().replace(',', '.'));
     const sellerIndex = this.seller.get_selected();
@@ -194,12 +213,8 @@ export class SearchView extends Gtk.Box {
         signal: controller.signal,
         onSourceStarted: (id, label) => {
           // A provider the view did not expect — the config changed under it —
-          // still gets a panel rather than dropping off the screen silently.
-          if (!this.panels.has(id)) {
-            const panel = new SourcePanel(id, label, explain);
-            this.panels.set(id, panel);
-            this.results.append(panel);
-          }
+          // still gets its place rather than dropping off the screen silently.
+          if (!this.labels.has(id)) this.addSource(id, label);
         },
         onSource: (source: SourceResult) => this.settle(source),
       });
@@ -216,7 +231,11 @@ export class SearchView extends Gtk.Box {
       // Panels for sources the fan-out never reached — `--provider` narrowing,
       // or a source switched off between laying out and asking.
       const answered = new Set(result.outcome.reports.map((r) => r.provider));
-      for (const [id, panel] of this.panels) if (!answered.has(id)) panel.notAsked();
+      for (const [id, label] of this.labels) {
+        if (answered.has(id)) continue;
+        this.panels.get(id)?.notAsked();
+        this.strip.notAsked(id, label);
+      }
     } catch (err) {
       // An aborted search is a decision the user made, not a failure to report
       // as one. Anything else is worth a sentence rather than a silent stop.
@@ -227,7 +246,12 @@ export class SearchView extends Gtk.Box {
           : `Die Suche ist gescheitert: ${err instanceof Error ? err.message : String(err)}`,
         aborted ? ['dim-label'] : ['error'],
       );
-      for (const panel of this.panels.values()) if (aborted) panel.notAsked();
+      if (aborted) {
+        for (const [id, label] of this.labels) {
+          this.panels.get(id)?.notAsked();
+          this.strip.notAsked(id, label);
+        }
+      }
     } finally {
       this.running = null;
       this.startButton.set_sensitive(true);
@@ -236,11 +260,69 @@ export class SearchView extends Gtk.Box {
   }
 
   private settle(source: SourceResult): void {
-    const panel = this.panels.get(source.report.provider);
-    if (!panel) return;
     // `GLib.get_real_time()` is microseconds since the epoch; the presenter
     // wants milliseconds, and it wants them passed in rather than read, so the
-    // wording is reproducible in a test.
-    panel.settle(source, Math.floor(GLib.get_real_time() / 1000));
+    // wording is reproducible in a test. Kept with the result, so that
+    // re-laying it later says „vor 2 d" about the same moment rather than
+    // quietly re-reading the clock.
+    const now = Math.floor(GLib.get_real_time() / 1000);
+    this.settled.push({ result: source, now });
+    this.place(source, now);
+  }
+
+  /** Lay the results area out for the sources that are about to be asked. */
+  private prepare(sources: readonly { id: ProviderId; label: string }[]): void {
+    this.clearChildren(this.results);
+    this.panels.clear();
+    this.labels.clear();
+    this.strip.clear();
+    this.grid.clear();
+
+    if (this.layout === 'grid') {
+      this.results.append(this.strip);
+      this.results.append(this.grid);
+    }
+    for (const { id, label } of sources) this.addSource(id, label);
+  }
+
+  private addSource(id: ProviderId, label: string): void {
+    this.labels.set(id, label);
+    if (this.layout === 'grid') {
+      this.strip.pending(id, label);
+      return;
+    }
+    const panel = new SourcePanel(this.context, id, label, this.explain.get_active());
+    this.panels.set(id, panel);
+    this.results.append(panel);
+  }
+
+  /** Put one settled source where the current layout wants it. */
+  private place(source: SourceResult, now: number): void {
+    if (this.layout === 'grid') {
+      this.strip.settle(source);
+      const label = this.labels.get(source.report.provider) ?? source.report.provider;
+      for (const listing of source.listings) {
+        this.grid.add(listing, label, source.verdicts.get(listing.key), now);
+      }
+      return;
+    }
+    this.panels.get(source.report.provider)?.settle(source, now);
+  }
+
+  /**
+   * Switch layout without asking the marketplaces again.
+   *
+   * Everything needed is already in `settled`: the same results, re-laid. A
+   * preference is not a reason to spend somebody's rate limit twice — and on a
+   * source with a ten-second crawl-delay it would be a visibly punishing way to
+   * change one's mind about a grid.
+   */
+  setLayout(layout: ResultLayout): void {
+    if (layout === this.layout) return;
+    this.layout = layout;
+    if (this.labels.size === 0) return;
+    const sources = [...this.labels].map(([id, label]) => ({ id, label }));
+    this.prepare(sources);
+    for (const { result, now } of this.settled) this.place(result, now);
   }
 }

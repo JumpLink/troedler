@@ -25,3 +25,18 @@ export const DEV_HOOK_PREFIX = 'TR_APP';
  * interesting states nobody checks.
  */
 export const QUERY_HOOK = `${DEV_HOOK_PREFIX}_QUERY`;
+
+/**
+ * `TR_APP_LAYOUT=grid|sections` — switch the results layout once the query has
+ * run, exactly as the settings dialog does.
+ *
+ * Same argument as `TR_APP_QUERY`, one level in. The devtools plane cannot
+ * operate an `Adw.ComboRow`: `ActivateWidget` on its list row reports `true` and
+ * changes no selection, and `SendKey` answers `false` — measured 2026-09-06. So
+ * without this hook the live switch is the one path in this window that can only
+ * be checked by reading it, while both layouts and the config round-trip are
+ * measured. It goes through `setLayout`, the same method the dialog's callback
+ * calls, rather than around it — a hook that took a different route would prove
+ * something nobody uses.
+ */
+export const LAYOUT_HOOK = `${DEV_HOOK_PREFIX}_LAYOUT`;

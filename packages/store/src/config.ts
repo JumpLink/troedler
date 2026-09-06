@@ -28,6 +28,24 @@ export interface ProviderConfig {
   readonly acknowledged?: string;
 }
 
+/**
+ * How the window lays results out.
+ *
+ * `grid` — one wrapping grid over every source, cheapest first, each card
+ * carrying the badge of the market it came from.
+ * `sections` — a block per source, the layout this project started from,
+ * because „40 € here, 120 € there" is only visible while the two stay apart.
+ *
+ * Both are honest; they answer different questions, which is why this is a
+ * setting and not a decision made once in the code. The CLI ignores it — it
+ * has one layout and always groups.
+ */
+export type ResultLayout = 'grid' | 'sections';
+
+export interface UiConfig {
+  readonly layout?: ResultLayout;
+}
+
 export interface TroedlerConfig {
   readonly version: 1;
   readonly providers: Partial<Record<ProviderId, ProviderConfig>>;
@@ -36,9 +54,18 @@ export interface TroedlerConfig {
     readonly radiusKm?: number;
     readonly currency?: string;
   };
+  /** Window-only preferences. Absent for anybody who only uses the CLI. */
+  readonly ui?: UiConfig;
 }
 
 export const EMPTY_CONFIG: TroedlerConfig = { version: 1, providers: {}, defaults: {} };
+
+/** The layout a window opens with when nothing was ever chosen. */
+export const DEFAULT_LAYOUT: ResultLayout = 'grid';
+
+export function layoutOf(config: TroedlerConfig): ResultLayout {
+  return config.ui?.layout === 'sections' ? 'sections' : DEFAULT_LAYOUT;
+}
 
 export class ConfigError extends Error {
   constructor(message: string) {
@@ -59,7 +86,15 @@ function validate(raw: unknown, path: string): TroedlerConfig {
     throw new ConfigError(`${path}: providers ist kein Objekt.`);
   if (typeof defaults !== 'object' || defaults === null)
     throw new ConfigError(`${path}: defaults ist kein Objekt.`);
-  return { version: 1, providers, defaults };
+  const ui = (obj.ui ?? {}) as UiConfig;
+  if (typeof ui !== 'object' || ui === null) throw new ConfigError(`${path}: ui ist kein Objekt.`);
+  // Every section has to be named here, and that is the point rather than a
+  // chore: this function REBUILDS the object instead of passing the parsed one
+  // through, so a field it does not mention is silently dropped on load. `ui`
+  // was added to the type, written by the settings dialog, and then thrown away
+  // by this line on the very next read — the whole setting was inert, and the
+  // type check, the lint and the build were all green while it was.
+  return { version: 1, providers, defaults, ui };
 }
 
 /** A missing file is not an error — it is a first run. */
