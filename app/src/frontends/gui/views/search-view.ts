@@ -70,8 +70,6 @@ export class SearchView extends Gtk.Box {
   private readonly notices = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 4 });
   private readonly status = new Adw.StatusPage({
     title: 'Mehrere Gebrauchtwaren-Marktplätze, eine Anfrage',
-    description:
-      'Die Treffer bleiben nach Quelle getrennt — dasselbe Ding kostet auf dem einen Markt 40 € und auf dem anderen 120 €, und das ist die Antwort.',
     iconName: 'system-search-symbolic',
     vexpand: true,
   });
@@ -102,6 +100,7 @@ export class SearchView extends Gtk.Box {
     this.context = context;
     this.layout = layoutOf(context.config);
     this.grid = new OfferGrid(context, { showSource: true, sorted: true });
+    this.describeLayout();
 
     const bar = new Gtk.Box({
       orientation: Gtk.Orientation.HORIZONTAL,
@@ -152,6 +151,26 @@ export class SearchView extends Gtk.Box {
   runQuery(text: string): void {
     this.entry.set_text(text);
     void this.run();
+  }
+
+  /**
+   * The empty screen says what THIS layout does, not what the app used to do.
+   *
+   * The line here read „Die Treffer bleiben nach Quelle getrennt" and stayed
+   * that way when the grid became the default — a start screen promising the
+   * one property the active layout does not have. A surface that describes a
+   * different program than the one running is the defect this project spends
+   * most of its comments on; it does not stop being that when it is the welcome
+   * text.
+   */
+  private describeLayout(): void {
+    this.status.set_description(
+      this.layout === 'grid'
+        ? 'Alle Treffer in einem Raster, günstigste zuerst — jede Karte nennt ihren Markt, ' +
+            'damit sichtbar bleibt, dass dasselbe Ding hier 40 € und dort 120 € kostet.'
+        : 'Die Treffer bleiben nach Quelle getrennt — dasselbe Ding kostet auf dem einen Markt ' +
+            '40 € und auf dem anderen 120 €, und das ist die Antwort.',
+    );
   }
 
   /** Which sources this search will ask, in the order the panels appear. */
@@ -320,6 +339,7 @@ export class SearchView extends Gtk.Box {
   setLayout(layout: ResultLayout): void {
     if (layout === this.layout) return;
     this.layout = layout;
+    this.describeLayout();
     if (this.labels.size === 0) return;
     const sources = [...this.labels].map(([id, label]) => ({ id, label }));
     this.prepare(sources);
