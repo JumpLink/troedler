@@ -82,7 +82,9 @@ against, records the date you agreed, and then stays out of the way. Even switch
 every other limit — robots.txt, the pace, the honest user agent, no login, no circumvention.
 
 Nothing about a seller is stored — no names, no ids, no profiles. Phone numbers and e-mail
-addresses are stripped from listing text while parsing. Images are linked, never downloaded.
+addresses are stripped from listing text while parsing. Photographs are fetched to be shown to you
+and kept nowhere: through the same gate as everything else, at the pace the operator asked for,
+never written to disk and never re-published.
 
 ## Sources
 
@@ -121,10 +123,9 @@ gjsify workspace troedler-cli start:app
 
 Two screens. **Suche** lays out one panel per source *before* asking any of them and settles each
 in place, so a result never appears without the account of where it came from — and a source that
-was skipped, refused or broke never looks like a source with nothing to offer. **Quellen** lists
-every source with its switch; turning on one whose terms forbid automated access puts the
-operator's clause on screen and asks, because that is a decision for a person and the date lands in
-the config.
+was skipped, refused or broke never looks like a source with nothing to offer. **Quellen** lists every source with its switch; turning on one whose terms forbid automated access
+puts the operator's clause on screen and asks, because that is a decision for a person and the date
+lands in the config.
 
 It is a separate bundle from the CLI on purpose: `troedler search` in a terminal has no business
 loading GTK.

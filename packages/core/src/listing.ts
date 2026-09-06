@@ -121,7 +121,13 @@ export interface Listing {
   /** Live auctions only. */
   readonly bidCount: number | null;
 
-  /** Image URLs, largest first. Never fetched, never stored — only linked. */
+  /**
+   * Image URLs, largest first.
+   *
+   * The kernel only ever holds the URLs. Fetching one is a decision a SURFACE
+   * makes — the window does it to show a card, through `HttpClient.image` and
+   * the same gate as a search — and nothing anywhere writes the bytes down.
+   */
   readonly images: readonly string[];
   /** GTIN/EAN/ISBN when the source has one. The only reliable cross-provider identity. */
   readonly gtin: string | null;

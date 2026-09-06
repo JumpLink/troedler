@@ -42,7 +42,18 @@ Modern-Solution line of cases through BVerfG 2025) and it is not close to the ed
 through a catalogue, no building a local picture of a market. eBay listing data: ≤6 h by licence.
 |**Personal data is filtered while parsing, not cleaned up later.** No seller names or ids, no
 profiles, no histories; phone numbers and e-mail addresses stripped from free text at the parser.
-Images are URLs — never downloaded, never rehosted.
+|**Images are fetched to be SHOWN, and never kept.** This rule was the opposite until 2026-09-06
+— „images are URLs, never downloaded" — and it was changed deliberately, because a window that
+lists second-hand goods without their photographs is not usable for the thing it is for. What
+replaced it is narrower than a browser and not a loophole: the fetch runs through the SAME gate
+(`HttpClient.image`), so an opt-out host, a switched-off source and a `Disallow:` on the image
+path refuse there exactly as they do for a search; the operator's `Crawl-delay` is honoured and
+only OUR politeness floor is dropped, because a thumbnail beside a row somebody is already reading
+is not a crawl; the bytes go to a widget and are **never written to disk, never rehosted, never
+redistributed**; a response that is not an image is a refusal rather than something to pass on.
+`packages/http/src/client.ts` carries the reasoning, `app/tests/unit/compliance/image.test.ts`
+the measurement — including the discriminator that a plain `get` on the same host still waits the
+floor, so the exemption is about the KIND of request and not about the host.
 |**Honest user agent**, `troedler/<version> (+repo-url)`, with a reachable contact. No spoofing.
 It is also how an operator who objects can reach us at all.
 |**`OPT_OUT_HOSTS` in `@troedler/compliance` is binding.** A host that objects is refused by the

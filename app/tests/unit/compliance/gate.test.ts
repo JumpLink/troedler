@@ -67,6 +67,45 @@ export default async () => {
       ).toBe(DEFAULT_DELAY_SECONDS);
     });
 
+    await it("keeps the operator's wish apart from our own floor", async () => {
+      // The two numbers must not be readable off one another, or a caller that
+      // legitimately drops OUR floor would also drop THEIR Crawl-delay.
+      const stated = evaluate({
+        url: new URL('https://example.invalid/yes'),
+        userAgent: 'troedler',
+        robots,
+        enabled: true,
+        apiHost: false,
+      });
+      expect(stated.statedDelaySeconds).toBe(5);
+      expect(stated.delaySeconds).toBe(5);
+
+      // The discriminator: a host that asked for NOTHING still paces at the
+      // floor, and must be distinguishable from one that asked for exactly it.
+      const silent = evaluate({
+        url: new URL('https://example.invalid/yes'),
+        userAgent: 'troedler',
+        robots: parseRobots('User-agent: *\nDisallow: /nope\n', '2026-08-21T12:00:00.000Z'),
+        enabled: true,
+        apiHost: false,
+      });
+      expect(silent.statedDelaySeconds).toBe(null);
+      expect(silent.delaySeconds).toBe(DEFAULT_DELAY_SECONDS);
+
+      const explicit = evaluate({
+        url: new URL('https://example.invalid/yes'),
+        userAgent: 'troedler',
+        robots: parseRobots(
+          `User-agent: *\nCrawl-delay: ${DEFAULT_DELAY_SECONDS}\n`,
+          '2026-08-21T12:00:00.000Z',
+        ),
+        enabled: true,
+        apiHost: false,
+      });
+      expect(explicit.statedDelaySeconds).toBe(DEFAULT_DELAY_SECONDS);
+      expect(explicit.delaySeconds).toBe(DEFAULT_DELAY_SECONDS);
+    });
+
     await it('lets a documented API through the robots.txt that forbids everything', async () => {
       // Not hypothetical. Measured 2026-08-22: `api.booklooker.de/robots.txt`
       // is 68 344 bytes of the WEBSITE's crawl rules and ends in

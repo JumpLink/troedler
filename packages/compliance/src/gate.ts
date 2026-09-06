@@ -42,6 +42,18 @@ export interface GateVerdict {
   readonly detail: string | null;
   /** Seconds to wait between requests to this host. */
   readonly delaySeconds: number;
+  /**
+   * What the OPERATOR asked for, `null` when they asked for nothing.
+   *
+   * `delaySeconds` folds their wish together with our own politeness floor, and
+   * for crawling that is the right number. It is the wrong one anywhere the
+   * floor does not apply — fetching the thumbnail of a result already on
+   * screen, say — because a caller that reads `delaySeconds` there would pace
+   * itself to 2 s per image on a host that never asked for anything, and
+   * silently ignore a host that asked for 10. Keeping both means a caller can
+   * drop OUR rule without touching THEIRS.
+   */
+  readonly statedDelaySeconds: number | null;
   /** Which of the four things decided this verdict. */
   readonly basis: GateBasis;
 }
@@ -84,6 +96,7 @@ export function evaluate(input: GateInput): GateVerdict {
       reason: 'opted-out',
       detail: `${host} hat dem automatisierten Abruf widersprochen und steht auf der Opt-out-Liste.`,
       delaySeconds: DEFAULT_DELAY_SECONDS,
+      statedDelaySeconds: null,
       basis: 'opt-out',
     };
   }
@@ -98,6 +111,7 @@ export function evaluate(input: GateInput): GateVerdict {
           ? `${host} ist abgeschaltet. Die Nutzungsbedingungen dieses Anbieters untersagen automatisierten Abruf — siehe ${record.doc}.`
           : `${host} ist nicht aktiviert.`,
       delaySeconds: DEFAULT_DELAY_SECONDS,
+      statedDelaySeconds: null,
       basis: 'disabled',
     };
   }
@@ -115,6 +129,7 @@ export function evaluate(input: GateInput): GateVerdict {
         ? `${host} ist eine dokumentierte API. Es gilt die Lizenz des Anbieters, nicht die robots.txt der Website — siehe ${record.doc}.`
         : `${host} wird als dokumentierte API abgerufen; robots.txt wird dafür nicht ausgewertet.`,
       delaySeconds: 0,
+      statedDelaySeconds: null,
       basis: 'licence',
     };
   }
@@ -124,6 +139,7 @@ export function evaluate(input: GateInput): GateVerdict {
     : { allowed: true, rule: null, crawlDelaySeconds: null };
 
   const delaySeconds = Math.max(verdict.crawlDelaySeconds ?? 0, DEFAULT_DELAY_SECONDS);
+  const statedDelaySeconds = verdict.crawlDelaySeconds ?? null;
 
   if (!verdict.allowed) {
     return {
@@ -131,8 +147,9 @@ export function evaluate(input: GateInput): GateVerdict {
       reason: 'robots',
       detail: `robots.txt von ${host} verbietet ${input.url.pathname}${input.url.search} (${verdict.rule}).`,
       delaySeconds,
+      statedDelaySeconds,
       basis: 'robots',
     };
   }
-  return { allowed: true, reason: null, detail: null, delaySeconds, basis: 'robots' };
+  return { allowed: true, reason: null, detail: null, delaySeconds, statedDelaySeconds, basis: 'robots' };
 }

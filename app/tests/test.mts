@@ -13,6 +13,7 @@ import present from './unit/core/present.test.ts';
 import robots from './unit/compliance/robots.test.ts';
 import gate from './unit/compliance/gate.test.ts';
 import ratelimit from './unit/compliance/ratelimit.test.ts';
+import image from './unit/compliance/image.test.ts';
 
 import storePaths from './unit/store/paths.test.ts';
 import store from './unit/store/store.test.ts';
@@ -40,6 +41,7 @@ run({
   robots,
   gate,
   ratelimit,
+  image,
   storePaths,
   store,
   config,

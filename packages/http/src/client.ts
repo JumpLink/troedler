@@ -18,6 +18,9 @@ import { ProviderError } from '@troedler/core';
 import { baseHeaders } from './agent.ts';
 import { RateLimitExceeded, RateLimiter, type HostBudget } from './ratelimit.ts';
 
+/** Ceiling for a single listing image. A thumbnail is tens of kilobytes. */
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
 export interface HttpClientOptions {
   readonly version: string;
   /** Seconds before an in-flight request is abandoned. */
@@ -154,7 +157,22 @@ export class HttpClient {
   async #request(
     url: string,
     options: FetchOptions,
-    init: { method: 'GET' | 'POST'; body?: string; contentType?: string },
+    init: {
+      method: 'GET' | 'POST';
+      body?: string;
+      contentType?: string;
+      /**
+       * `crawl` — reading a marketplace's pages on our own initiative. Our
+       * politeness floor applies on top of whatever the operator asked for.
+       *
+       * `display` — fetching one asset for a result the person is already
+       * looking at. The operator's `Crawl-delay` still applies; OUR floor does
+       * not, because it exists to keep a crawl from burdening a host, and this
+       * is not a crawl. Loading twenty thumbnails at 2 s each would take 40
+       * seconds and produce nothing a browser would not have fetched at once.
+       */
+      pacing?: 'crawl' | 'display';
+    },
   ): Promise<Response> {
     const parsed = new URL(url);
     const host = parsed.host.toLowerCase();
@@ -208,9 +226,14 @@ export class HttpClient {
       );
     }
 
+    // The per-run request cap guards against a paging loop — an adapter walking
+    // a catalogue. A results grid asking one CDN for the images beside its rows
+    // is not that, and capping it would blank out the tail of the page with no
+    // way to tell the person why.
+    const display = init.pacing === 'display';
     const budget: HostBudget = {
-      delaySeconds: verdict.delaySeconds,
-      maxRequests: this.#maxPerHost,
+      delaySeconds: display ? (verdict.statedDelaySeconds ?? 0) : verdict.delaySeconds,
+      maxRequests: display ? null : this.#maxPerHost,
     };
 
     let res: Response;
@@ -270,6 +293,54 @@ export class HttpClient {
 
   async get(url: string, options: FetchOptions): Promise<Response> {
     return this.#request(url, options, { method: 'GET' });
+  }
+
+  /**
+   * Fetch one listing image, for showing next to that listing.
+   *
+   * This is the ONE path in the project that fetches something a marketplace
+   * did not hand us as data, and it is deliberately narrow:
+   *
+   *  - it runs through the same gate as everything else, so an opt-out host, a
+   *    switched-off source and a `Disallow:` on the image path all refuse here
+   *    exactly as they do for a search;
+   *  - it honours the operator's `Crawl-delay` and drops only our own floor
+   *    (see `pacing`);
+   *  - the bytes are returned to the caller and never written to disk. Nothing
+   *    in this project stores an image, and there is no code path that could;
+   *  - a body that is not an image is a REFUSAL, not something to hand onward.
+   *    Every one of these hosts answers a bad URL with an HTML error page, and
+   *    a decoder handed HTML fails with a message about pixel data that sends
+   *    the reader looking in the wrong place entirely.
+   *
+   * The cap is the same idea one layer down: a CDN that answers a thumbnail
+   * request with a 40 MB original would otherwise be a memory spike per card.
+   */
+  async image(url: string, options: FetchOptions): Promise<Uint8Array> {
+    const res = await this.#request(
+      url,
+      { ...options, headers: { Accept: 'image/*', ...options.headers } },
+      { method: 'GET', pacing: 'display' },
+    );
+
+    const type = res.headers.get('content-type') ?? '';
+    if (!type.toLowerCase().startsWith('image/')) {
+      throw new ProviderError(
+        options.provider,
+        'remote-error',
+        `${new URL(url).host} lieferte kein Bild, sondern ${type || 'einen Körper ohne Content-Type'}.`,
+      );
+    }
+
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.byteLength > MAX_IMAGE_BYTES) {
+      throw new ProviderError(
+        options.provider,
+        'remote-error',
+        `${new URL(url).host} lieferte ${Math.round(bytes.byteLength / 1024)} KB für ein Vorschaubild — mehr als die Obergrenze von ${MAX_IMAGE_BYTES / 1024 / 1024} MB.`,
+      );
+    }
+    return bytes;
   }
 
   /**
