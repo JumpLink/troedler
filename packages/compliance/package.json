@@ -1,6 +1,7 @@
 {
   "name": "@troedler/compliance",
   "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
   "private": true,
   "type": "module",
   "description": "The robots.txt parser and the gate that runs before every request, plus the source register (docs/quellen) and the opt-out list. Pure — the matcher is the piece that has to be right, so it is testable without a network.",

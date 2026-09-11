@@ -1,6 +1,7 @@
 {
   "name": "@troedler/markt",
   "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
   "private": true,
   "type": "module",
   "description": "markt.de and Quoka classified-ad portals. Plain HTML, both robots.txt open to us. Quoka is on by default; markt.de is OFF — its Nutzungsbedingungen forbid automated retrieval, see docs/quellen/markt.de.md.",

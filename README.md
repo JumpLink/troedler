@@ -174,6 +174,14 @@ If you operate one of these sites and would rather troedler did not read it, ope
 to the address in the user agent — the host goes on the opt-out list and out of the next release.
 No argument, no delay.
 
-Licence: MIT. Part of the [werkstatt](https://github.com/JumpLink) workspace, alongside
+## Licence
+
+[AGPL-3.0-or-later](LICENSE) © Pascal Garber.
+
+Free to use, modify and share. The AGPL adds one condition to the GPL: anyone who
+runs this program **as a network service** must offer that service's users the
+source of their version. Running it locally for yourself adds no obligation.
+
+Part of the [werkstatt](https://github.com/JumpLink) workspace, alongside
 [postbote](https://github.com/JumpLink/postbote) and
 [bauplaner](https://github.com/JumpLink/bauplaner).

@@ -1,6 +1,7 @@
 {
   "name": "@troedler/store",
   "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
   "private": true,
   "type": "module",
   "description": "Local state: XDG paths, the config manifest, saved searches, the seen index and the price history. Uses node:* only — never a provider package, not even transitively — so the watch logic is unit-testable on Node against :memory:.",

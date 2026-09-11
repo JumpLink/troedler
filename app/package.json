@@ -1,6 +1,7 @@
 {
   "name": "troedler-cli",
   "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
   "private": true,
   "type": "module",
   "description": "Troedler app: the `troedler` binary — CLI and MCP frontends over the @troedler/* packages, bundled to a single .gjs.mjs and run on GJS via gjsify.",

@@ -1,6 +1,7 @@
 {
   "name": "@troedler/kleinanzeigen",
   "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
   "private": true,
   "type": "module",
   "description": "kleinanzeigen.de adapter over the public search pages, within what robots.txt permits. OFF by default: their terms forbid automated access — see docs/quellen/kleinanzeigen.de.md.",

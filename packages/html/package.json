@@ -1,6 +1,7 @@
 {
   "name": "@troedler/html",
   "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
   "private": true,
   "type": "module",
   "description": "The single façade over HTML parsing and CSS selectors. Exists so that swapping the parser costs one file — see the gjsify note in src/index.ts.",

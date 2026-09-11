@@ -1,6 +1,7 @@
 {
   "name": "@troedler/http",
   "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
   "private": true,
   "type": "module",
   "description": "Outbound HTTP: the honest user agent, the per-host rate limiter, the robots.txt loader and the gate-checked fetch. Every request the project makes goes through here — there is no second way out.",
