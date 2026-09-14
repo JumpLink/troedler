@@ -24,7 +24,7 @@
  * releases. Re-measure at every bump (see AGENTS.md) and remove exactly the
  * lines that measurement turns green — never the file because one of them did.
  *
- * // gjsify gap (unfixed, no PR yet): only `search` has a setter. The rest are
+ * // gjsify gap (unfixed, gjsify#1678): only `search` has a setter. The rest are
  * // getter-only on the GJS URL implementation.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
