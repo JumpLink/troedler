@@ -24,7 +24,13 @@ using Adw 1;
 // measured 388 px of popover over a window that is 360 px wide. The unit went
 // into the title for the same reason: `Adw.SpinRow` exposes no suffix of its
 // own, and „Höchstpreis" alone does not say what the number is.
-template $TroedlerSearchPopover : Gtk.Box {
+// The template name and the `GTypeName` in `FilterPopover` are ONE string, and
+// they have to stay one string: GJS refuses to build a template whose declared
+// type does not match the type it is registering, throws out of `super()`, and
+// the search view never finishes constructing — a window with no search view in
+// it. That failure is loud on stderr and silent everywhere else, which is how it
+// reached a green pipeline once already.
+template $TroedlerFilterPopover : Gtk.Box {
   width-request: 250;
   margin-top: 6;
   margin-bottom: 6;

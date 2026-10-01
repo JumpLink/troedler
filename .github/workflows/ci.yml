@@ -119,6 +119,15 @@ jobs:
       - name: Guard against icon names the theme cannot draw
         run: node scripts/guard-icon-names.mjs
 
+      # A `.blp` template's `$Name` and the `GTypeName` registering it are ONE
+      # string. A rename on one side only makes GJS refuse to build the template,
+      # `super()` throw, and the window come up with no search view in it — an
+      # empty frame where the whole app is. It type-checked, linted, built, passed
+      # 1487 assertions on both runtimes and went green in CI first; only a
+      # screenshot showed it.
+      - name: Guard against a template and its GTypeName drifting apart
+        run: node scripts/guard-template-types.mjs
+
       # Both bundles. The GUI is a separate entry point because `import Adw`
       # becomes a top-level `gi://Adw` — building it here is what keeps that
       # split from rotting, since nothing else in CI imports a widget.
