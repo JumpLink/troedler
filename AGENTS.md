@@ -311,6 +311,16 @@ where an icon belongs, a three-dot menu where a disclosure arrow belongs, and a 
 magnifier while it was ABORTING the search. Each was found by looking at a PNG of the running app, and
 each is now behind something that can fail without one.
 
+**The fourth one was the Blueprint migration, and it is behind `guard-template-types.mjs`.** A `.blp`
+template's `$Name` and the `GTypeName` registering it are ONE string, and they were two: the popover's
+template said `$TroedlerSearchPopover`, its class said `GTypeName: 'TroedlerFilterPopover'`. GJS refuses
+to build a template whose type does not match the one registering it, `super()` throws, and the window
+comes up with **no search view in it at all** — an empty frame where the whole app is. The base class has
+to match too (`Gtk.Box` declared, `Adw.Bin` extended) and that is the same failure. It passed everything
+first, including CI, for the same reason the other three did. The guard asks the question TypeScript
+cannot — one string, two files — and needs nothing but Node. Measured by putting the wrong name back:
+red, then green.
+
 **Driving it as an agent.** `GJSIFY_DEVTOOLS=1` exports `org.gjsify.Devtools` at
 `/eu/jumplink/Troedler/devtools`; `Screenshot`, `DumpTree`, `FindWidget` and `ActivateWidget` work
 over `gdbus`. `ResizeWindow(w, h)` and `GetProperty(path, prop)` are the two that answer geometry and
