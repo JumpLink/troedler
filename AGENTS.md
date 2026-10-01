@@ -274,11 +274,20 @@ subtitles are one short line each — an `Adw.ActionRow` does not wrap its subti
 so a longer one measured 388 px and a popover wider than its own window. (An earlier draft with full
 sentences measured 587 px over a 600 px window.)
 
-**The properties that have to survive the `.blp` migration are `width-chars: 12` and
-`hexpand: true` on the `Gtk.SearchEntry`.** A `Gtk.SearchEntry` moved into a template without them
+**The properties that have to survive in `search-view.blp` are `width-chars: 12` and
+`hexpand: true` on the `Gtk.SearchEntry`.** A `Gtk.SearchEntry` written into a template without them
 brings the 57 px back, and no test here would notice — which is the whole reason these numbers are
 written down. `searchView.bar` is no longer public: nothing outside the view needs it, because there
 is no breakpoint driving it.
+
+**The toolbar IS a Blueprint template now**, and that is the one thing this file used to leave open.
+It used to say the defect was *deliberately NOT fixed on this branch* and left the before-picture for
+whoever took it — which was the right call while the branch only MOVED the widget and the fix belonged
+on `main`. It is not the right call now: `main` carries the rebuilt toolbar and the branch carries the
+same design as `search-view.blp`, so the two facts have to be told once, together. The template keeps
+`width-chars: 12`, `hexpand: true`, `troedler-filter-symbolic` and a `go_button` with a label and no
+`icon-name`, and the popover is a second template (`search-view-popover.blp`) because a `Gtk.Popover` is
+not a child of the view — the button owns it and shows it over the results.
 
 **An icon name is not a string, it is a dependency on somebody else's package.** The filter button asked
 for `view-filter-symbolic`, and **no version of Adwaita has it** — there is no funnel in the theme at
@@ -341,7 +350,9 @@ stayed green:
   `undefined`, so a query against a column that does not exist reported "nothing found" forever.
   #1674 (0.52.0) lets a rejected query raise; #1756 made `undefined` bind NULL like Node 26.10.
   The canary in `packages/store/src/db.ts` STAYS — it cost three statements at open, and a read
-  path that quietly returns nothing was never only about swallowed exceptions.
+  path that quietly returns nothing was never only about swallowed exceptions. Three MORE libgda
+  gaps closed at 0.53.0 and this store sits on two of them: #1841 (an INTEGER above 2^31 was
+  refused outright, and `price_minor` is INTEGER) and #1893 (`EXISTS` subqueries did not parse).
 
 Unavoidable shims carry **one of two markers, and they mean opposite things at bump time**:
 
@@ -367,6 +378,44 @@ on 0.52.0.** Every red turned green — the nine setters, `all()`/`get()` raisin
 missing column), and `undefined` binding NULL. That is also the honest reading of the gap markers:
 both had said "unfixed", and both were true until the release that carried the fix. The HTML5
 parser checks were covered by the adapters' own suites, which run on gjs AND node.
+
+**0.52.0 → 0.53.0: the probe became a committed file, because a probe that lives only in a
+conversation cannot be re-run by the next person.** `scripts/probe-gjsify-0.53.mjs` holds it, and
+it gates CI on both runtimes. Measured, same method:
+
+| gjs | result |
+|---|---|
+| 0.52.0 | 21 green, **3 red** |
+| 0.53.0 | **24 green**, 0 red |
+
+The three that turned are the parts of `node:sqlite` this store actually leans on. **#1841** read
+an INTEGER above 2^31 as "Ganzzahlwert ist zu groß" — an outright refusal — and `price_minor` is
+an INTEGER column, so a five-figure bike price was the shape that would have hit it; timestamps are
+TEXT and were never affected, which is why the mistake was available to make. **#1893** made an
+`EXISTS` subquery parse at all. Neither is a shim in this repo and neither needed code here: the
+point is that the probe found them, which a release-note reading would not have.
+
+The probe also earns its place by catching **its own** wrong assumption. `undefined` binding NULL
+was asserted as a cross-runtime equality and came back red on Node — because node 24, the version
+that bootstraps this toolchain, REFUSES it while gjsify binds NULL like Node 26.10. Since no
+statement in `packages/store` binds `undefined` (every nullable column is bound as a literal
+`null`), that check now asserts what the code does and prints the difference as a note instead of
+pretending the two runtimes agree.
+
+**What did NOT change, and why the markers stay.** Not one shim in this repo had its fix in
+0.53.0, so none was deleted — and the reason each stays is its own, not affection:
+
+- The canary in `packages/store/src/db.ts`. The gap closed at 0.52.0; the check outlived it
+  because swallowed exceptions were never the only way a write goes in and a read comes back
+  empty.
+- The composed-URL shapes in `packages/markt/src/shared.ts` and
+  `packages/discogs/src/request.ts`. Mutation works and always did after 0.52.0; the shape says
+  what it builds instead of subtracting from something else.
+- `btoa` over GLib's base64 in `packages/ebay` — still polyfilled by `@gjsify/node-globals`
+  0.53.0, confirmed by reading the shipped `register/encoding.js`, not by remembering 0.52.0.
+- The 404-message sniffs in `packages/auktion/src/justiz.ts` and `packages/ebay/src/provider.ts`.
+  Not gjsify gaps at all: the fix belongs in `@troedler/core` / `@troedler/http`, which should
+  carry the HTTP status on the error.
 
 Watch for spec differences the old library papered over. The one that bit: `tagName` is UPPERCASE
 in the DOM and was lowercase in `domhandler`, so `node.tagName === 'dt'` silently stopped matching

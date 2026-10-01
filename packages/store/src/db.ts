@@ -21,6 +21,19 @@
  * (missing table, missing column, bad SQL — and `undefined` binds THREW where
  * Node writes NULL); on 0.52.0 all four are green.
  *
+ * RE-MEASURED at the 0.53.0 bump rather than assumed, by
+ * `scripts/probe-gjsify-0.53.mjs` — and this time the diff IS the result:
+ *
+ *     0.52.0   21 green, 3 red
+ *     0.53.0   24 green, 0 red
+ *
+ * The three that turned are #1841 (an INTEGER above 2^31 was refused outright
+ * with "Ganzzahlwert ist zu groß" — twice, as a lone value and after a small
+ * row) and #1893 (an `EXISTS` subquery was a syntax error to libgda). The first
+ * is the one this file should have been afraid of: `price_minor` is an INTEGER
+ * column, and a market where a bike costs a five-figure euro puts it over 2^31.
+ * Timestamps are TEXT, which is why they were never affected.
+ *
  * The canary stays anyway, and not out of sentiment: swallowed exceptions were
  * never the only way a write goes in and a read comes back empty. Its cost is
  * three statements at open, and it is the only check that exercises the read
