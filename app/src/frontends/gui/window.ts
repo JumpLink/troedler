@@ -24,6 +24,7 @@ import type { ResultLayout } from '@troedler/store';
 
 import type { Context } from '../../core/context.ts';
 import { APP_NAME } from './constants.ts';
+import { registerIcons } from './icons.ts';
 import { ProvidersView } from './views/providers-view.ts';
 import { SearchView } from './views/search-view.ts';
 import { SettingsDialog } from './views/settings-dialog.ts';
@@ -43,6 +44,11 @@ export class MainWindow extends Adw.ApplicationWindow {
     hooks: { view?: string; query?: string; layout?: ResultLayout },
   ) {
     super({ application: app, title: APP_NAME, defaultWidth: 980, defaultHeight: 720 });
+
+    // First thing, before any widget asks the theme for an icon. Adwaita has no
+    // funnel, so the filter button would be an empty white rectangle without this
+    // (`icons.ts` has the story and `scripts/guard-icon-names.mjs` the fence).
+    registerIcons();
 
     this.providersView = new ProvidersView(context);
     const searchView = new SearchView(context);
