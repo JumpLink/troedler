@@ -31,9 +31,33 @@ import Pango from '@girs/pango-1.0';
 import { reportLine, sourceCensus, type ProviderId, type ProviderReport } from '@troedler/core';
 
 import type { SourceResult } from '../../../core/actions/index.ts';
+import { setAccessibleLabel } from '../a11y.ts';
 import { outcomeClasses } from './outcome.ts';
 
 const LINE = ['caption'];
+
+/**
+ * The disclosure arrows, and why these two.
+ *
+ * `view-list-symbolic` / `view-more-symbolic` were the wrong pair: the three-dot
+ * and the list glyphs are not a disclosure idiom in Adwaita, they are two
+ * different *actions*, and the summary line ends in a three-dot menu that then
+ * turns into a list — a button that changes what it means when you press it.
+ * `pan-down-symbolic` / `pan-end-symbolic` are the pan arrows an
+ * `Adw.ExpanderRow` uses, which is the thing this row behaves like.
+ */
+const COLLAPSED_ICON = 'pan-down-symbolic';
+const EXPANDED_ICON = 'pan-end-symbolic';
+
+/**
+ * What a screen reader is told about the toggle.
+ *
+ * The visible row is a sentence about the search, and read on its own it says
+ * nothing about the button inside it — so the accessible name is the ACTION, and
+ * it swaps with the state the way the arrow does.
+ */
+const EXPAND_HINT = 'Quellenbericht zeigen';
+const COLLAPSE_HINT = 'Quellenbericht ausblenden';
 
 export class SourceCensus extends Adw.Bin {
   static {
@@ -59,7 +83,7 @@ export class SourceCensus extends Adw.Bin {
     wrapMode: Pango.WrapMode.WORD_CHAR,
     cssClasses: LINE,
   });
-  private readonly chevron = new Gtk.Image({ iconName: 'view-list-symbolic' });
+  private readonly chevron = new Gtk.Image({ iconName: COLLAPSED_ICON });
   private readonly detail = new Gtk.Box({
     orientation: Gtk.Orientation.VERTICAL,
     spacing: 2,
@@ -84,6 +108,7 @@ export class SourceCensus extends Adw.Bin {
     this.box.append(this.summary);
     this.box.append(this.detail);
     this.set_child(this.box);
+    this.setExpanded(false);
   }
 
   clear(): void {
@@ -149,7 +174,6 @@ export class SourceCensus extends Adw.Bin {
     this.sentence.set_label(census.text);
     this.sentence.set_css_classes(census.tone === 'ok' ? LINE : [...LINE, census.tone]);
     this.spinner.set_visible(this.reports.size < this.asked);
-    this.chevron.set_from_icon_name(this.expanded ? 'view-list-symbolic' : 'view-more-symbolic');
     // A failure is the line a reader must not skim past, so it opens the block
     // itself. Only that far: a user who expanded a clean search keeps it open.
     if (census.expand) this.setExpanded(true);
@@ -158,7 +182,8 @@ export class SourceCensus extends Adw.Bin {
   private setExpanded(expanded: boolean): void {
     this.expanded = expanded;
     this.detail.set_visible(expanded);
-    this.chevron.set_from_icon_name(expanded ? 'view-list-symbolic' : 'view-more-symbolic');
+    this.chevron.set_from_icon_name(expanded ? EXPANDED_ICON : COLLAPSED_ICON);
     this.sentence.set_tooltip_text(expanded ? 'Quellenbericht ausblenden' : 'Quellenbericht zeigen');
+    setAccessibleLabel(this.summary, expanded ? COLLAPSE_HINT : EXPAND_HINT);
   }
 }
