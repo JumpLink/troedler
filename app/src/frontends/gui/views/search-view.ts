@@ -117,13 +117,18 @@ export class SearchView extends Gtk.Box {
    * second one for the other state.
    *
    * Stopp is the same button because Stopp is not a mode: it aborts the signal
-   * the search hangs off and then there is no search. Destructive styling while
-   * it is that, suggested while it is the search — the label is never wrong
-   * about which of the two pressing it does.
+   * the search hangs off and then there is no search.
+   *
+   * **The label, and no icon.** This had `iconName` as well, on the reasoning
+   * that an icon is the modern thing — and a screenshot caught what GTK4 does
+   * with a button that has both: it draws the ICON and drops the label. So the
+   * button said nothing in either state, and while the search ran it showed a
+   * magnifier — the one glyph that means the opposite of what pressing it does.
+   * The comment here used to claim the label was never wrong about that. It was
+   * not on screen at all.
    */
   private readonly goButton = new Gtk.Button({
     label: 'Suchen',
-    iconName: 'system-search-symbolic',
     tooltipText: 'Suche starten (Enter)',
     cssClasses: ['suggested-action'],
   });
@@ -601,7 +606,6 @@ export class SearchView extends Gtk.Box {
    */
   private setRunning(running: boolean): void {
     this.goButton.set_label(running ? 'Stopp' : 'Suchen');
-    this.goButton.set_icon_name(running ? 'process-stop-symbolic' : 'system-search-symbolic');
     this.goButton.set_tooltip_text(running ? 'Suche abbrechen' : 'Suche starten (Enter)');
     // `destructive-action` rather than `suggested-action` while it aborts: it is
     // the same class of button, saying the opposite thing about what pressing it
