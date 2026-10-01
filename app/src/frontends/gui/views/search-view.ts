@@ -54,7 +54,33 @@ export class SearchView extends Gtk.Box {
   }
 
   private readonly context: Context;
-  private readonly entry = new Gtk.SearchEntry({ hexpand: true, placeholderText: 'Wonach suchen?' });
+  /**
+   * The one width in this view that is not negotiable.
+   *
+   * `widthChars` is the FLOOR, and it exists because `Gtk.Box` hands every
+   * child its natural width and gives the surplus to the only `hexpand` one —
+   * this entry. Below the width the other controls need in total there is no
+   * surplus, so the entry absorbed the whole deficit and rendered as the `⊗`
+   * clear glyph with the query squeezed out of the allocation: measured 57 px
+   * of entry and 13 px of inner `GtkText` at a 600 px window, with
+   * `TR_APP_QUERY=fahrrad` loaded and the results being bicycles. It held the
+   * full string the whole time; nothing about the query was wrong.
+   *
+   * The floor alone is not the whole fix, and the arithmetic is why: the other
+   * five controls ask for 509 px between them, so below ~663 px of window
+   * there is no width for a readable entry and for them at the same time, and
+   * GTK answers by overflowing the row. So the bar STACKS under a breakpoint
+   * (see `window.ts`) and this floor is what keeps the horizontal band above
+   * it readable rather than merely un-overflowed.
+   *
+   * **This is the property that has to survive the `.blp` migration:
+   * `width-chars: 12` on the `Gtk.SearchEntry` in `search-view.blp`.**
+   */
+  private readonly entry = new Gtk.SearchEntry({
+    hexpand: true,
+    widthChars: 12,
+    placeholderText: 'Wonach suchen?',
+  });
   private readonly maxPrice = new Gtk.Entry({
     placeholderText: 'Höchstpreis €',
     inputPurpose: Gtk.InputPurpose.NUMBER,
@@ -82,6 +108,15 @@ export class SearchView extends Gtk.Box {
     hscrollbarPolicy: Gtk.PolicyType.NEVER,
     vscrollbarPolicy: Gtk.PolicyType.AUTOMATIC,
   });
+  /**
+   * The query bar — public because the window's breakpoint drives it, not this
+   * view: a breakpoint can only be added to an `Adw.Window`, and a view that
+   * did it to itself would have to reach up to its root.
+   *
+   * `MainWindow` flips it to a vertical stack below the width where the five
+   * controls beside the entry no longer fit beside it.
+   */
+  readonly bar: Gtk.Box;
   private readonly panels = new Map<ProviderId, SourcePanel>();
   private readonly strip = new SourceStrip();
   private readonly grid: OfferGrid;
@@ -102,7 +137,7 @@ export class SearchView extends Gtk.Box {
     this.grid = new OfferGrid(context, { showSource: true, sorted: true });
     this.describeLayout();
 
-    const bar = new Gtk.Box({
+    this.bar = new Gtk.Box({
       orientation: Gtk.Orientation.HORIZONTAL,
       spacing: 8,
       marginTop: 12,
@@ -110,13 +145,13 @@ export class SearchView extends Gtk.Box {
       marginStart: 12,
       marginEnd: 12,
     });
-    bar.append(this.entry);
-    bar.append(this.maxPrice);
-    bar.append(this.seller);
-    bar.append(this.explain);
-    bar.append(this.startButton);
-    bar.append(this.stopButton);
-    this.append(bar);
+    this.bar.append(this.entry);
+    this.bar.append(this.maxPrice);
+    this.bar.append(this.seller);
+    this.bar.append(this.explain);
+    this.bar.append(this.startButton);
+    this.bar.append(this.stopButton);
+    this.append(this.bar);
 
     this.notices.set_margin_start(12);
     this.notices.set_margin_end(12);

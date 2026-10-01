@@ -221,9 +221,48 @@ The app entry point starts with `import 'dotenv/config'` for the same reason the
 Leaving it out was a real defect: `troedler check` reported Booklooker „bereit" while the window
 beside it said „Kein BOOKLOOKER_API_KEY gesetzt" — same machine, same `.env`.
 
+**A `Gtk.Box` row has no floor, and the search entry paid for it.** It was reported as „the entry
+shows an x": under `TR_APP_QUERY=fahrrad` the results are bicycles, but the entry renders as `⊗`.
+Not a wrong query — the entry held the full string the whole time, and what a person sees is the
+clear glyph with the text squeezed out of the allocation. The cause is that a horizontal `Gtk.Box`
+gives every child its natural width and hands the surplus to the only `hexpand` one, so once the
+window is narrower than the other five controls need together, the entry absorbs the ENTIRE deficit
+and GTK answers by overflowing the row.
+
+Two things fix it, and the arithmetic is why BOTH are needed — the other controls ask for 509 px
+between them (price 150, dropdown 139, check 82, buttons 55 + 43, plus 40 spacing and 24 margins),
+so below ~663 px there is no width for a readable entry and for them at once. A `width-chars` floor
+on the entry keeps the horizontal band above that readable; an `Adw.Breakpoint` at 700 px stacks the
+bar below it. A floor alone overflows, and a breakpoint alone leaves the last 60 px of the
+horizontal band unreadable.
+
+Measured through the devtools plane rather than by eye, stepping the window down. GTK4 has no
+GObject `width` (`GetProperty` answers not-found), so the number is the widget's OWN PNG:
+`Screenshot` takes a widget path and the IHDR of the result is the allocated width.
+
+| window | entry before | text before | entry after | text after |
+|---:|---:|---:|---:|---:|
+| 980 px | 349 px | 305 px | 349 px | 305 px |
+| 800 px | 169 px | 125 px | 182 px | 138 px |
+| 720 px | — | — | 152 px | 108 px |
+| 700 px | 84 px | 40 px | 658 px | 614 px |
+| 600 px | **57 px** | **13 px** | 558 px | 514 px |
+| 500 px | 57 px | 13 px | 458 px | 414 px |
+| 360 px | 57 px | 13 px | **318 px** | **274 px** |
+
+The 700 px boundary is exact, not approximate: at 701 px the row is still horizontal and the entry
+holds 152 px; at 700 px it stacks. The fix is the 57 px → 318 px line.
+
+**`searchView.bar` is public on purpose, and the reason is a breakpoint.** A breakpoint can only be
+added to an `Adw.Window`, so a view that stacked its own bar would have to reach up to its root;
+`MainWindow` owns the setter instead. **The property that has to survive the `.blp` migration is
+`width-chars: 12` on the `Gtk.SearchEntry`** — a `Gtk.SearchEntry` moved into a template without it
+brings the 57 px back, and no test here would notice.
+
 **Driving it as an agent.** `GJSIFY_DEVTOOLS=1` exports `org.gjsify.Devtools` at
 `/eu/jumplink/Troedler/devtools`; `Screenshot`, `DumpTree`, `FindWidget` and `ActivateWidget` work
-over `gdbus`. The devtools plane cannot type into an entry — `SendKey` takes accelerators — so
+over `gdbus`. `ResizeWindow(w, h)` and `GetProperty(path, prop)` are the two that answer geometry and
+layout questions. The devtools plane cannot type into an entry — `SendKey` takes accelerators — so
 **`TR_APP_QUERY=<begriff>` runs a search at startup**, `TR_APP_VIEW=suche|quellen` opens a
 view, and `TR_APP_LAYOUT=grid|sections` switches the layout AFTER the query through the same
 `setLayout` the settings dialog calls. That last one exists because the devtools plane cannot
