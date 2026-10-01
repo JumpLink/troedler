@@ -256,16 +256,20 @@ so the widget decides geometry and nothing else.
 Measured through the devtools plane rather than by eye, stepping the window down. GTK4 has no
 GObject `width` (`GetProperty` answers not-found), so the number is the widget's OWN PNG:
 `Screenshot` takes a widget path and the IHDR of the result is the allocated width. 2026-10-01,
-`TR_APP_QUERY=fahrrad`, toolbar rebuilt as described:
+`TR_APP_QUERY=trekkingrad`, toolbar rebuilt as described — and the allocation does not depend on the
+query, `fahrrad` measured the same 34 px-tall row the same day:
 
 | window | entry on `main` | text on `main` | entry now | text now | toolbar row |
 |---:|---:|---:|---:|---:|---:|
-| 980 px | 349 px | 305 px | **589 px** | **545 px** | 689×34, one row |
-| 600 px | **57 px** | **13 px** | **457 px** | **413 px** | 557×34, one row |
-| 360 px | 57 px | 13 px | **236 px** | **192 px** | 336×34, one row |
+| 980 px | 349 px | 305 px | **550 px** | **506 px** | 689×34, one row |
+| 600 px | **57 px** | **13 px** | **418 px** | **374 px** | 557×34, one row |
+| 360 px | 57 px | 13 px | **197 px** | **153 px** | 336×34, one row |
 
 The toolbar row is 34 px tall at every width: it does not stack, and at 360 px the entry still holds
-the whole query. The popover measures 354 px wide over a 360 px window, which is why its three
+the whole query. (550/418/197, not the 589/457/236 measured hours earlier with an icon on the run button:
+a `Gtk.Button` that has BOTH `label` and `icon-name` draws the icon and drops the label — see below.)
+
+The popover measures 354 px wide, so it fits a 360 px window with 6 px to spare, which is why its three
 subtitles are one short line each — an `Adw.ActionRow` does not wrap its subtitle in this libadwaita,
 so a longer one measured 388 px and a popover wider than its own window. (An earlier draft with full
 sentences measured 587 px over a 600 px window.)
@@ -275,6 +279,28 @@ sentences measured 587 px over a 600 px window.)
 brings the 57 px back, and no test here would notice — which is the whole reason these numbers are
 written down. `searchView.bar` is no longer public: nothing outside the view needs it, because there
 is no breakpoint driving it.
+
+**An icon name is not a string, it is a dependency on somebody else's package.** The filter button asked
+for `view-filter-symbolic`, and **no version of Adwaita has it** — there is no funnel in the theme at
+all. It type-checked, compiled, ran, and rendered as an EMPTY WHITE RECTANGLE, because a missing
+`-symbolic` on a `Gtk.MenuButton` is not the `image-missing` placeholder a `Gtk.Image` draws. So the
+Adwaita apps that need a funnel bundle one, and this does too: an original 16×16 symbolic in
+`app/src/frontends/gui/resources/`, compiled into a GResource by `scripts/build-icon-resource.mjs` and
+carried **inside the bundle** as base64 — the bundle is the artefact, and a `.gresource` beside it is a
+second thing to install and a second thing to lose silently. `MainWindow` registers it first thing.
+
+`scripts/guard-icon-names.mjs` is the part that matters, and it is in CI: it asks whether **each icon
+name the GUI uses resolves in the theme this machine has**, which is a question no type system can ask,
+and it proves the generated resource still matches its SVG by SHA-256, so an icon edited without
+regenerating fails a build that needs nothing but Node. Both halves were measured by putting the old
+name back: red, then green. It strips comments before it greps — a guard that reads its own documentation
+as a usage fails for ever, the same trap `guard-unused-kernel.mjs` records for the English word „until".
+
+**A screenshot is still the only thing that sees what a widget actually drew.** Three defects on this
+toolbar survived a green type check, a green lint, a green build and 1487 green tests: a white rectangle
+where an icon belongs, a three-dot menu where a disclosure arrow belongs, and a run button that drew a
+magnifier while it was ABORTING the search. Each was found by looking at a PNG of the running app, and
+each is now behind something that can fail without one.
 
 **Driving it as an agent.** `GJSIFY_DEVTOOLS=1` exports `org.gjsify.Devtools` at
 `/eu/jumplink/Troedler/devtools`; `Screenshot`, `DumpTree`, `FindWidget` and `ActivateWidget` work
