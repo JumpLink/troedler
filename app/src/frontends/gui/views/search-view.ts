@@ -63,6 +63,7 @@ import { layoutOf, type ResultLayout } from '@troedler/store';
 
 import { search, type SourceResult } from '../../../core/actions/index.ts';
 import { isEnabled, type Context } from '../../../core/context.ts';
+import { FILTER_ICON } from '../icons.ts';
 import { OfferGrid } from '../widgets/offer-grid.ts';
 import { SourceCensus } from '../widgets/source-census.ts';
 import { SourcePanel } from '../widgets/source-panel.ts';
@@ -192,7 +193,6 @@ export class SearchView extends Gtk.Box {
     spacing: 6,
     marginStart: 12,
     marginEnd: 12,
-    marginBottom: 6,
   });
   private readonly results = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 6 });
   private readonly notices = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 4 });
@@ -313,13 +313,17 @@ export class SearchView extends Gtk.Box {
    * rows are laid out once and shown over the results, so nothing here takes
    * height away from the list at any window width.
    *
+   * The icon is the app's OWN (`icons.ts`): `view-filter-symbolic` is not a name
+   * the Adwaita theme has, and a missing `-symbolic` on a `Gtk.MenuButton` is a
+   * white rectangle, not a placeholder.
+   *
    * `autohide` is the default and stays on — the popover closes on the click
    * outside that a person expects, and closing it is not the end of anything,
    * because the chip row still says what is set.
    */
   private filterButton(): Gtk.MenuButton {
     const button = new Gtk.MenuButton({
-      iconName: 'view-filter-symbolic',
+      iconName: FILTER_ICON,
       tooltipText: 'Filter',
     });
     const group = new Adw.PreferencesGroup();
@@ -357,15 +361,7 @@ export class SearchView extends Gtk.Box {
     for (const panel of this.panels.values()) panel.setExplain(this.explain.get_active());
   }
 
-  /**
-   * Rebuild the chip row from the kernel's reading of the current filters.
-   *
-   * The sentences and the keys come from `activeFilterChips` rather than from
-   * the three controls one at a time: a filter is either set or it is not, and
-   * the widget that knows that is the one deciding what to show. Each chip
-   * removes ITS OWN filter, because a row of chips where every chip clears
-   * everything is a row of chips that gets one wrong click.
-   */
+  /** Rebuild the chip row: one flat button per active filter, nothing if none. */
   private chipsChanged(): void {
     let child = this.chips.get_first_child();
     while (child) {
@@ -375,9 +371,6 @@ export class SearchView extends Gtk.Box {
     }
     const active = activeFilterChips(this.filters());
     for (const chip of active) {
-      // `.chip`, and not a label on a flat button: a flat button with a label is
-      // indistinguishable from the sentence next to it, so a person would not
-      // know there was anything to press. The chip is libadwaita's own.
       const button = new Gtk.Button({
         label: chip.text,
         cssClasses: ['chip'],
