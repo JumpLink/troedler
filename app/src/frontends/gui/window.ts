@@ -80,6 +80,18 @@ export class MainWindow extends Adw.ApplicationWindow {
     breakpoint.add_setter(header.get_title_widget()!, 'visible', false);
     this.add_breakpoint(breakpoint);
 
+    // The query bar stacks rather than squeezes. A horizontal `Gtk.Box` gives
+    // every child its natural width and hands the surplus to the only `hexpand`
+    // one, so when the window is narrower than the five controls beside the
+    // search entry need between them, the entry absorbs the entire deficit:
+    // measured 57 px of entry and 13 px of inner `GtkText` at a 600 px window,
+    // which renders the query as the `⊗` clear glyph. 700 px is where the row
+    // stops fitting — 533 px of margins, spacing and the other five controls,
+    // plus the entry's own 12-character floor.
+    const narrowBar = Adw.Breakpoint.new(Adw.BreakpointCondition.parse('max-width: 700px'));
+    narrowBar.add_setter(searchView.bar, 'orientation', Gtk.Orientation.VERTICAL);
+    this.add_breakpoint(narrowBar);
+
     this.set_content(toolbar);
 
     this.stack.connect('notify::visible-child-name', () => this.onViewShown());
