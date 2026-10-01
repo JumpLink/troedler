@@ -84,13 +84,13 @@ jobs:
       - name: Guard the apiHost ⟺ access correspondence
         run: node scripts/guard-api-hosts.mjs
 
-      # Also a grep. `new URL()` on GJS has exactly ONE working setter, `search`;
-      # the other nine throw "setting getter-only property" while every one of
-      # them works on Node — so the type check, the review and the Node test run
-      # all pass and the program dies on the runtime it ships on. Re-measure at
-      # each gjsify bump and delete only the lines that turn green.
-      - name: Guard against URL setters that throw under GJS
-        run: node scripts/guard-url-setters.mjs
+      # `guard-url-setters.mjs` used to live here and was deleted WHOLE at the
+      # 0.52.0 bump: all ten WHATWG setters measure green under gjs now, so the
+      # file had nothing left to refuse. Its ancestor was deleted the same way at
+      # 0.42.0 — but that time only five of the ten were green, which is how the
+      # other nine spent five releases unguarded. The rule that survives both
+      # deletions: re-measure at every bump and delete the file only when the
+      # measurement has no red line left, not when one of them turned.
 
       # Also a lookup, and for the same reason: an icon name the icon theme does
       # not have type-checks, compiles, runs, and renders as an EMPTY WHITE
