@@ -80,17 +80,22 @@ export class MainWindow extends Adw.ApplicationWindow {
     breakpoint.add_setter(header.get_title_widget()!, 'visible', false);
     this.add_breakpoint(breakpoint);
 
-    // The query bar stacks rather than squeezes. A horizontal `Gtk.Box` gives
-    // every child its natural width and hands the surplus to the only `hexpand`
-    // one, so when the window is narrower than the five controls beside the
-    // search entry need between them, the entry absorbs the entire deficit:
-    // measured 57 px of entry and 13 px of inner `GtkText` at a 600 px window,
-    // which renders the query as the `⊗` clear glyph. 700 px is where the row
-    // stops fitting — 533 px of margins, spacing and the other five controls,
-    // plus the entry's own 12-character floor.
-    const narrowBar = Adw.Breakpoint.new(Adw.BreakpointCondition.parse('max-width: 700px'));
-    narrowBar.add_setter(searchView.bar, 'orientation', Gtk.Orientation.VERTICAL);
-    this.add_breakpoint(narrowBar);
+    // The query bar used to stack under a breakpoint, and the breakpoint is gone
+    // rather than moved: the row no longer needs one. It carried five controls
+    // beside the entry, and below 700 px the entry absorbed the whole deficit and
+    // rendered the query as the `⊗` clear glyph — 57 px of entry and 13 px of
+    // inner `GtkText` at 600 px, measured. The fix the stack came with was right
+    // about the width and wrong about the height: six rows of controls, a
+    // full-width „Suchen", a full-width „Stopp" and then a per-source block of
+    // seven lines, which is nearly all of a 600 px window with no results on it.
+    //
+    // The filters now live in a popover, so what is left beside the entry is a
+    // 34 px filter button and one run button — 156 px between them, against the
+    // 509 px the five controls asked for. That is why no breakpoint is needed
+    // here and why `width-chars: 12` on the entry is a floor that holds from
+    // 360 px upwards instead of a floor that only holds once the row has room.
+    // The 600 px breakpoint above is the Adwaita one (bottom switcher) and is
+    // about navigation, not about the entry.
 
     this.set_content(toolbar);
 

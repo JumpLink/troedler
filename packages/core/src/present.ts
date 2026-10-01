@@ -158,6 +158,121 @@ export function reportLine(report: ProviderReport): string {
   }
 }
 
+/** How loudly a roll-up of reports should be said. See `sourceCensus`. */
+export type CensusTone = 'ok' | 'warning' | 'error';
+
+export interface SourceCensus {
+  /** The one line. Never a count of what went wrong — the NAMES are in it. */
+  readonly text: string;
+  /** The colour a surface gives the line. Only a failure is `error`. */
+  readonly tone: CensusTone;
+  /** Whether the per-source detail must open itself. True for a failure. */
+  readonly expand: boolean;
+}
+
+/**
+ * Every source's report as ONE line, with the full block still behind it.
+ *
+ * The block is what this project will not give up: a source that was skipped,
+ * refused or broke must never read like a source with nothing to offer. Seven
+ * blocks of three lines each is also what a 600 px window spent its height on,
+ * and the reason for that was a toolbar, not the accounting.
+ *
+ * So the block collapses and this line takes its place, and it is written to
+ * still CARRY it: every source that did not answer is NAMED, never counted. A
+ * count would let a skipped eBay pass for a market with nothing on it, which is
+ * the one reading the block exists to prevent. `asked` counts the sources the
+ * search WILL ask, so a fan-out still running says so instead of looking
+ * finished with fewer answers.
+ *
+ * `tone` and `expand` carry the same judgement `explainLines` carries per line:
+ * a failure is what a reader must not skim past, so it is coloured and it opens
+ * the detail by itself; a skip is an operator's decision or a missing key, so it
+ * is named and coloured but it does not spend the height.
+ *
+ * `null` when nothing has been asked yet, so no surface can render a summary of
+ * a search that never ran.
+ */
+export function sourceCensus(
+  reports: readonly ProviderReport[],
+  asked: number,
+  rows: number,
+): SourceCensus | null {
+  if (asked === 0) return null;
+  const settled = reports.length;
+  const answered = reports.filter((r) => r.outcome === 'ok' || r.outcome === 'empty').length;
+  const names = (outcome: ProviderReport['outcome']): string =>
+    reports
+      .filter((r) => r.outcome === outcome)
+      .map((r) => providerLabel(r.provider))
+      .join(', ');
+
+  const failed = names('failed');
+  const skipped = names('skipped');
+  const parts = [
+    settled < asked
+      ? `Suche läuft — ${settled} von ${asked} Quellen geantwortet · ${rows} Treffer`
+      : `${rows} Treffer aus ${answered} ${answered === 1 ? 'Quelle' : 'Quellen'}`,
+  ];
+  if (skipped) parts.push(`übersprungen: ${skipped}`);
+  if (failed) parts.push(`FEHLER: ${failed}`);
+
+  return {
+    text: `${parts.join(' · ')}.`,
+    tone: failed ? 'error' : skipped ? 'warning' : 'ok',
+    expand: failed !== '',
+  };
+}
+
+/**
+ * Which of the three secondary filters a chip stands for.
+ *
+ * Not `FilterKey` from `query.ts`: those are the eight a provider declares it
+ * can push down, and these are the three controls a person sets. The two sets
+ * overlap on the price alone, and merging them would make a chip's key a claim
+ * about a marketplace's capability.
+ */
+export type ChipKey = 'price' | 'seller' | 'explain';
+
+/** One active filter, as the short label it wears while the popover is closed. */
+export interface FilterChip {
+  readonly key: ChipKey;
+  readonly text: string;
+}
+
+/** The three secondary filters, in the state the search is about to run with. */
+export interface ActiveFilters {
+  /** Cents, or `null` for no ceiling — the same thing `SearchQuery` means. */
+  readonly maxPriceMinor: number | null;
+  readonly sellerType: 'private' | 'commercial' | null;
+  readonly explain: boolean;
+}
+
+/**
+ * The active filters as chips, so that closing the popover does not hide them.
+ *
+ * The filters moved into a popover, and a popover is where filters go in current
+ * Adwaita apps — but a filter a person cannot see is a filter they will apply
+ * twice, and „nur privat" changes what the list MEANS. So the popover is not
+ * where a filter lives, it is where a filter is set, and the chip row is the
+ * receipt. `key` comes back with each one because a chip that cannot be
+ * dismissed is a badge, not a control.
+ *
+ * Empty when nothing is set, so a surface can hide the row rather than print
+ * „keine Filter" over the results.
+ */
+export function activeFilterChips(filters: ActiveFilters): readonly FilterChip[] {
+  const chips: FilterChip[] = [];
+  if (filters.maxPriceMinor !== null && filters.maxPriceMinor > 0) {
+    chips.push({ key: 'price', text: `Höchstpreis ${fmtMoney(money(filters.maxPriceMinor))}` });
+  }
+  if (filters.sellerType) {
+    chips.push({ key: 'seller', text: `nur ${SELLER_TYPE_LABEL[filters.sellerType]}` });
+  }
+  if (filters.explain) chips.push({ key: 'explain', text: 'Erklären an' });
+  return chips;
+}
+
 /**
  * The `--explain` block: which filter ran where, and what nobody could apply.
  *

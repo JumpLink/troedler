@@ -204,7 +204,7 @@ CLI, MCP server and the **native GNOME app** are three renderings of the same ac
 **Two layouts, one invariant.** The results area is either a price-sorted grid of cards over every
 source or a block per source, chosen in the settings (`config.ui.layout`, GUI-only — the CLI has
 one layout and always groups). What is NOT switchable is the accounting: the grid carries a
-`SourceStrip` with the same five report states, laid out before the fan-out just as the panels are.
+`SourceCensus` with the same five report states, laid out before the fan-out just as the panels are.
 A layout may change how offers are grouped; it may not change whether a skipped source is visible.
 Switching re-lays the results already held rather than searching again — a preference is not a
 reason to spend somebody's rate limit twice.
@@ -229,35 +229,52 @@ gives every child its natural width and hands the surplus to the only `hexpand` 
 window is narrower than the other five controls need together, the entry absorbs the ENTIRE deficit
 and GTK answers by overflowing the row.
 
-Two things fix it, and the arithmetic is why BOTH are needed — the other controls ask for 509 px
-between them (price 150, dropdown 139, check 82, buttons 55 + 43, plus 40 spacing and 24 margins),
-so below ~663 px there is no width for a readable entry and for them at once. A `width-chars` floor
-on the entry keeps the horizontal band above that readable; an `Adw.Breakpoint` at 700 px stacks the
-bar below it. A floor alone overflows, and a breakpoint alone leaves the last 60 px of the
-horizontal band unreadable.
+The first fix was a floor plus a stack, and the stack is what made it temporary. The other five controls
+asked for 509 px between them (price 150, dropdown 139, check 82, buttons 55 + 43, plus 40 spacing and
+24 margins), so below ~663 px there is no width for a readable entry and for them at once: a
+`width-chars: 12` floor kept the horizontal band above that readable, and an `Adw.Breakpoint` at
+700 px stacked the bar below it. That fixed the width and spent the height — six rows of controls, a
+full-width „Suchen", a full-width „Stopp" and then the per-source block, which at 600 px is nearly
+the whole window with no results on it.
+
+**What is there now removes the arithmetic instead of working around it.** The three secondary filters
+(Höchstpreis, Anbieter, Erklären) live in one `Gtk.MenuButton` popover as `Adw.SpinRow` /
+`Adw.ComboRow` / `Adw.SwitchRow`; what is left in the toolbar is the entry, a 34 px filter button and
+one run button that becomes „Stopp" while the search runs — 156 px beside the entry against the 509 px
+before. The breakpoint is GONE, and a `Gtk.Box` row that asks for 156 px does not need one. The entry
+therefore keeps its floor everywhere instead of only above a boundary, and the `Adw.Clamp` around the
+row is what stops a 4K window from stretching the entry to a mile.
+
+The collapsed source block is the other half. `SourceStrip` printed one wrapped line per source,
+always; `SourceCensus` collapses it to `sourceCensus()`'s one line and keeps the lines behind a
+toggle. **The line NAMES every source that did not answer and never counts it** — a count would let a
+skipped eBay pass for a market with nothing on it, which is the reading the whole block exists to
+prevent. A failure expands the block by itself (`expand`); a skip does not, because it is an operator's
+decision or a missing key and is named in the line instead. Both sentences live in `@troedler/core`,
+so the widget decides geometry and nothing else.
 
 Measured through the devtools plane rather than by eye, stepping the window down. GTK4 has no
 GObject `width` (`GetProperty` answers not-found), so the number is the widget's OWN PNG:
-`Screenshot` takes a widget path and the IHDR of the result is the allocated width.
+`Screenshot` takes a widget path and the IHDR of the result is the allocated width. 2026-10-01,
+`TR_APP_QUERY=fahrrad`, toolbar rebuilt as described:
 
-| window | entry before | text before | entry after | text after |
-|---:|---:|---:|---:|---:|
-| 980 px | 349 px | 305 px | 349 px | 305 px |
-| 800 px | 169 px | 125 px | 182 px | 138 px |
-| 720 px | — | — | 152 px | 108 px |
-| 700 px | 84 px | 40 px | 658 px | 614 px |
-| 600 px | **57 px** | **13 px** | 558 px | 514 px |
-| 500 px | 57 px | 13 px | 458 px | 414 px |
-| 360 px | 57 px | 13 px | **318 px** | **274 px** |
+| window | entry on `main` | text on `main` | entry now | text now | toolbar row |
+|---:|---:|---:|---:|---:|---:|
+| 980 px | 349 px | 305 px | **589 px** | **545 px** | 689×34, one row |
+| 600 px | **57 px** | **13 px** | **457 px** | **413 px** | 557×34, one row |
+| 360 px | 57 px | 13 px | **236 px** | **192 px** | 336×34, one row |
 
-The 700 px boundary is exact, not approximate: at 701 px the row is still horizontal and the entry
-holds 152 px; at 700 px it stacks. The fix is the 57 px → 318 px line.
+The toolbar row is 34 px tall at every width: it does not stack, and at 360 px the entry still holds
+the whole query. The popover measures 354 px wide over a 360 px window, which is why its three
+subtitles are one short line each — an `Adw.ActionRow` does not wrap its subtitle in this libadwaita,
+so a longer one measured 388 px and a popover wider than its own window. (An earlier draft with full
+sentences measured 587 px over a 600 px window.)
 
-**`searchView.bar` is public on purpose, and the reason is a breakpoint.** A breakpoint can only be
-added to an `Adw.Window`, so a view that stacked its own bar would have to reach up to its root;
-`MainWindow` owns the setter instead. **The property that has to survive the `.blp` migration is
-`width-chars: 12` on the `Gtk.SearchEntry`** — a `Gtk.SearchEntry` moved into a template without it
-brings the 57 px back, and no test here would notice.
+**The properties that have to survive the `.blp` migration are `width-chars: 12` and
+`hexpand: true` on the `Gtk.SearchEntry`.** A `Gtk.SearchEntry` moved into a template without them
+brings the 57 px back, and no test here would notice — which is the whole reason these numbers are
+written down. `searchView.bar` is no longer public: nothing outside the view needs it, because there
+is no breakpoint driving it.
 
 **Driving it as an agent.** `GJSIFY_DEVTOOLS=1` exports `org.gjsify.Devtools` at
 `/eu/jumplink/Troedler/devtools`; `Screenshot`, `DumpTree`, `FindWidget` and `ActivateWidget` work
