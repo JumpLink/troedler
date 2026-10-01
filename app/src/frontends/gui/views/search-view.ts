@@ -65,48 +65,119 @@ import { layoutOf, type ResultLayout } from '@troedler/store';
 import { search, type SourceResult } from '../../../core/actions/index.ts';
 import { isEnabled, type Context } from '../../../core/context.ts';
 import { setAccessibleLabel } from '../a11y.ts';
-import { FILTER_ICON } from '../icons.ts';
 import { OfferGrid } from '../widgets/offer-grid.ts';
 import { SourceCensus } from '../widgets/source-census.ts';
 import { SourcePanel } from '../widgets/source-panel.ts';
 
-export class SearchView extends Gtk.Box {
+import Template from './search-view.blp';
+import PopoverTemplate from './search-view-popover.blp';
+
+/**
+ * The three secondary filters, behind one button — and why they are a template
+ * of their own.
+ *
+ * Höchstpreis, Anbieter and Erklären were three controls in the toolbar row,
+ * which made the entry the squeezed one. In a popover they are still exactly the
+ * same three fields with the same three values — the kernel never learned
+ * anything new about them — but the row they sat in is now one entry wide plus
+ * two buttons, and that is the whole reason a 360 px window is usable.
+ *
+ * The rows are `Adw`'s own, so each one is a title, a value and a label instead
+ * of a bare control, and `use-markup: false` in the TEMPLATE on every row:
+ * `PreferencesRow` parses title and subtitle as Pango markup on assignment, and
+ * a later `set_use_markup(false)` is too late (the incident is in AGENTS.md).
+ *
+ * `Adw` is a VALUE import here again, not type-only: this class still builds the
+ * popover itself rather than letting the view template hold it. That is not an
+ * oversight — a `Gtk.Popover` is not a child of the view, so a template inside
+ * `search-view.blp` would name a widget that is not in the hierarchy the
+ * template describes.
+ */
+class FilterPopover extends Adw.Bin {
   static {
-    GObject.registerClass({ GTypeName: 'TroedlerSearchView' }, this);
+    GObject.registerClass(
+      {
+        GTypeName: 'TroedlerFilterPopover',
+        Template: PopoverTemplate,
+        InternalChildren: ['max_price', 'seller', 'explain'],
+      },
+      this,
+    );
   }
 
-  private readonly context: Context;
+  declare private readonly _max_price: Adw.SpinRow;
+  declare private readonly _seller: Adw.ComboRow;
+  declare private readonly _explain: Adw.SwitchRow;
+
+  get maxPrice(): Adw.SpinRow {
+    return this._max_price;
+  }
+
+  get seller(): Adw.ComboRow {
+    return this._seller;
+  }
+
+  get explain(): Adw.SwitchRow {
+    return this._explain;
+  }
+
+  constructor() {
+    super();
+    // The model is set here rather than in the template because it is built
+    // from the kernel's own seller labels — `SELLER_TYPE_LABEL` is a German
+    // sentence the CLI prints too, and a second copy in a `.blp` is exactly how
+    // the two surfaces end up disagreeing about the same word.
+    this._seller.set_model(
+      Gtk.StringList.new(['alle', `nur ${SELLER_TYPE_LABEL.private}`, `nur ${SELLER_TYPE_LABEL.commercial}`]),
+    );
+  }
+
+  /** The popover as the button wants it: itself, wrapped. */
+  asPopover(): Gtk.Popover {
+    return new Gtk.Popover({ child: this });
+  }
+}
+
+export class SearchView extends Gtk.Box {
+  static {
+    GObject.registerClass(
+      {
+        GTypeName: 'TroedlerSearchView',
+        Template,
+        // The five this class reads or connects, plus the empty-state page whose
+        // description describes the ACTIVE layout. The panels, the census and the
+        // grid are not here: they are one-per-source, and a template cannot
+        // count. `prepare()` appends them to `results`.
+        InternalChildren: ['entry', 'filter_button', 'go_button', 'chips', 'notices', 'status', 'results'],
+      },
+      this,
+    );
+  }
+
+  declare private readonly _entry: Gtk.SearchEntry;
+  declare private readonly _filter_button: Gtk.MenuButton;
+  declare private readonly _go_button: Gtk.Button;
+  declare private readonly _chips: Gtk.Box;
+  declare private readonly _notices: Gtk.Box;
+  declare private readonly _status: Adw.StatusPage;
+  declare private readonly _results: Gtk.Box;
+
   /**
    * The one width in this view that is not negotiable.
    *
-   * `widthChars` is the FLOOR, and it exists because `Gtk.Box` hands every
-   * child its natural width and gives the surplus to the only `hexpand` one —
-   * this entry. When the row beside it carried five controls, below the width
-   * they needed between them there was no surplus, so the entry absorbed the
-   * whole deficit and rendered as the `⊗` clear glyph with the query squeezed
-   * out of the allocation: measured 57 px of entry and 13 px of inner `GtkText`
-   * at a 600 px window, with `TR_APP_QUERY=fahrrad` loaded and the results being
-   * bicycles. It held the full string the whole time; nothing about the query
-   * was wrong.
-   *
-   * Moving the five controls into a popover is what made the FLOOR sufficient
-   * rather than merely necessary, and the arithmetic is why: a filter button
-   * (34 px) and one run button (~110 px) are 156 px between them, so from 360 px
-   * upwards there is a readable entry and them at the same time and the row no
-   * longer needs to stack. What is left beside the entry is small ENOUGH that
-   * the floor holds everywhere, and a floor that holds everywhere is a floor
-   * that can never be taken away again.
-   *
-   * **This is the property that has to survive the `.blp` migration:
-   * `width-chars: 12` on the `Gtk.SearchEntry` in `search-view.blp`, and
-   * `hexpand: true`.** Drop either one and the deficit goes straight back into
-   * the entry.
+   * `width-chars: 12` AND `hexpand: true` live in `search-view.blp` on the
+   * `Gtk.SearchEntry`, and they are the property of this migration that matters
+   * most — see the note on the entry in the template for the measurement. This
+   * getter exists only so the constructor can read and connect it.
    */
-  private readonly entry = new Gtk.SearchEntry({
-    hexpand: true,
-    widthChars: 12,
-    placeholderText: 'Wonach suchen?',
-  });
+  private get entry(): Gtk.SearchEntry {
+    return this._entry;
+  }
+
+  private get filterButton(): Gtk.MenuButton {
+    return this._filter_button;
+  }
+
   /**
    * One button, and it is the search itself.
    *
@@ -118,74 +189,11 @@ export class SearchView extends Gtk.Box {
    *
    * Stopp is the same button because Stopp is not a mode: it aborts the signal
    * the search hangs off and then there is no search.
-   *
-   * **The label, and no icon.** This had `iconName` as well, on the reasoning
-   * that an icon is the modern thing — and a screenshot caught what GTK4 does
-   * with a button that has both: it draws the ICON and drops the label. So the
-   * button said nothing in either state, and while the search ran it showed a
-   * magnifier — the one glyph that means the opposite of what pressing it does.
-   * The comment here used to claim the label was never wrong about that. It was
-   * not on screen at all.
    */
-  private readonly goButton = new Gtk.Button({
-    label: 'Suchen',
-    tooltipText: 'Suche starten (Enter)',
-    cssClasses: ['suggested-action'],
-  });
-  /**
-   * The three secondary filters, behind one button.
-   *
-   * Höchstpreis, Anbieter and Erklären were three controls in the toolbar row,
-   * which made the entry the squeezed one. In a popover they are still exactly
-   * the same three fields with the same three values — the kernel never learned
-   * anything new about them — but the row they sat in is now one entry wide plus
-   * two buttons, and that is the whole reason a 360 px window is usable.
-   *
-   * The rows are `Adw`'s own, so each one is a title, a value and a label
-   * instead of a bare control, and `useMarkup: false` in the CONSTRUCTOR on
-   * every row: `PreferencesRow` parses title and subtitle as Pango markup on
-   * assignment, and a later `set_use_markup(false)` is too late (the incident is
-   * in AGENTS.md).
-   *
-   * The subtitles are short ON PURPOSE, and that is a measurement rather than a
-   * taste. An `Adw.ActionRow` does not wrap its subtitle in this libadwaita, so
-   * a row asks for the full width of its longest line and the popover takes that
-   * as its own width — a popover wider than the window it belongs to, which is
-   * what the first version of these three produced: full sentences for subtitles,
-   * measured 388 px of popover over a window that is 360 px wide. The unit went
-   * into the title for the same reason: `Adw.SpinRow` exposes no suffix of its
-   * own, and „Höchstpreis" alone does not say what the number is.
-   */
-  private readonly maxPrice = new Adw.SpinRow({
-    title: 'Höchstpreis €',
-    subtitle: '0 = kein Limit',
-    adjustment: new Gtk.Adjustment({
-      lower: 0,
-      upper: 100000,
-      stepIncrement: 10,
-      pageIncrement: 100,
-    }),
-    value: 0,
-    digits: 0,
-    snapToTicks: true,
-    numeric: true,
-    useMarkup: false,
-  });
-  private readonly seller = new Adw.ComboRow({
-    title: 'Anbieter',
-    subtitle: 'privat / gewerblich',
-    useMarkup: false,
-    model: Gtk.StringList.new([
-      'alle',
-      `nur ${SELLER_TYPE_LABEL.private}`,
-      `nur ${SELLER_TYPE_LABEL.commercial}`,
-    ]),
-  });
-  private readonly explain = new Adw.SwitchRow({
-    title: 'Erklären',
-    subtitle: 'welche Filter griffen',
-    useMarkup: false,
-  });
+  private get goButton(): Gtk.Button {
+    return this._go_button;
+  }
+
   /**
    * The receipt for a filter that is set but no longer on screen.
    *
@@ -195,47 +203,44 @@ export class SearchView extends Gtk.Box {
    * the list MEANS; a person who cannot see that they set it will set it again.
    * Empty when nothing is set, so it never costs a row over the results.
    */
-  private readonly chips = new Gtk.Box({
-    orientation: Gtk.Orientation.HORIZONTAL,
-    spacing: 6,
-    marginStart: 12,
-    marginEnd: 12,
-    marginBottom: 6,
-  });
-  private readonly results = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 6 });
-  private readonly notices = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 4 });
-  private readonly status = new Adw.StatusPage({
-    title: 'Mehrere Gebrauchtwaren-Marktplätze, eine Anfrage',
-    iconName: 'system-search-symbolic',
-    vexpand: true,
-  });
-  // Never horizontally: every label in here wraps, so a horizontal scrollbar
-  // could only ever mean something is being hidden rather than wrapped — and
-  // what gets hidden first is the right-hand end of the sentence that explains
-  // why a source found nothing.
-  private readonly scroller = new Gtk.ScrolledWindow({
-    vexpand: true,
-    hscrollbarPolicy: Gtk.PolicyType.NEVER,
-    vscrollbarPolicy: Gtk.PolicyType.AUTOMATIC,
-  });
+  private get chips(): Gtk.Box {
+    return this._chips;
+  }
+
+  private get notices(): Gtk.Box {
+    return this._notices;
+  }
+
+  private get status(): Adw.StatusPage {
+    return this._status;
+  }
+
+  private get results(): Gtk.Box {
+    return this._results;
+  }
+
+  private readonly context: Context;
   /**
-   * The toolbar: the entry, and the two buttons that are all that has to fit
-   * beside it.
+   * The three secondary filters, behind the toolbar's filter button.
    *
-   * 12 px of margin and 6 px of spacing, against the 8/8 the old row used. Below
-   * 600 px that is 14 px back for the entry out of a window that has 240 px of
-   * it to spare, and above 600 px nobody can see the difference — a measured
-   * trade, not a taste one.
+   * A plain field and not a template child: they live in the popover's own
+   * template, and this is where the view reaches them. Everything else about them
+   * — why a popover, why the subtitles are short, why `use-markup: false` — is
+   * on `FilterPopover` and in `search-view-popover.blp`.
    */
-  private readonly bar = new Gtk.Box({
-    orientation: Gtk.Orientation.HORIZONTAL,
-    spacing: 6,
-    marginTop: 12,
-    marginBottom: 12,
-    marginStart: 12,
-    marginEnd: 12,
-  });
-  private readonly clamp = new Adw.Clamp({ maximumSize: 720, tighteningThreshold: 480 });
+  private readonly filterRows = new FilterPopover();
+  private get maxPrice(): Adw.SpinRow {
+    return this.filterRows.maxPrice;
+  }
+
+  private get seller(): Adw.ComboRow {
+    return this.filterRows.seller;
+  }
+
+  private get explain(): Adw.SwitchRow {
+    return this.filterRows.explain;
+  }
+
   private readonly panels = new Map<ProviderId, SourcePanel>();
   private readonly census = new SourceCensus();
   private readonly grid: OfferGrid;
@@ -250,38 +255,12 @@ export class SearchView extends Gtk.Box {
   private running: AbortController | null = null;
 
   constructor(context: Context) {
-    super({ orientation: Gtk.Orientation.VERTICAL });
+    super();
     this.context = context;
     this.layout = layoutOf(context.config);
     this.grid = new OfferGrid(context, { showSource: true, sorted: true });
     this.describeLayout();
-
-    this.bar.append(this.entry);
-    this.bar.append(this.filterButton());
-    this.bar.append(this.goButton);
-    // Clamped rather than free: without it a 4K window stretches the row to its
-    // full width and the entry — the only `hexpand` child — becomes a text field
-    // a mile long with the query somewhere in the middle of it. 720 px is where
-    // a search field stops being a field and starts being a banner, and
-    // `Adw.Clamp` is the one widget here that caps a natural width at all
-    // (`max-width-chars` on a label that ellipsizes does not — measured on a
-    // `Gtk.Picture` card, in AGENTS.md).
-    this.clamp.set_child(this.bar);
-    this.append(this.clamp);
-    this.append(this.chips);
-
-    this.notices.set_margin_start(12);
-    this.notices.set_margin_end(12);
-    this.append(this.notices);
-
-    this.results.set_margin_start(12);
-    this.results.set_margin_end(12);
-    this.results.set_margin_bottom(12);
-    const inner = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL });
-    inner.append(this.status);
-    inner.append(this.results);
-    this.scroller.set_child(inner);
-    this.append(this.scroller);
+    this.attachPopover();
 
     this.entry.connect('activate', () => void this.run());
     // One handler for both labels: the button does whatever the label says, and
@@ -308,53 +287,31 @@ export class SearchView extends Gtk.Box {
   }
 
   /**
-   * The filter button and the popover it opens.
+   * Give the toolbar's filter button something to open.
    *
-   * A `Gtk.MenuButton`, which is where a popover has lived since GTK 4.10 took
-   * `popover` off `Gtk.Button` — and it is the shape Adwaita's own filter
-   * affordance has anyway: a flat button that opens a popover and reports its own
-   * open state, which is why a person can tell at a glance that the filters are
-   * over there.
+   * The BUTTON is in `search-view.blp` — a `Gtk.MenuButton`, which is where a
+   * popover has lived since GTK 4.10 took `popover` off `Gtk.Button`, and the
+   * shape Adwaita's own filter affordance has anyway: a flat button that opens a
+   * popover and reports its own open state, which is why a person can tell at a
+   * glance that the filters are over there.
    *
-   * A popover rather than a dialog or a second row, because that is where
-   * Adwaita apps put filters, and because it costs the toolbar nothing: the three
-   * rows are laid out once and shown over the results, so nothing here takes
-   * height away from the list at any window width.
+   * Its ICON is there too, and it is the app's OWN (`troedler-filter-symbolic`
+   * from `icons.ts`): `view-filter-symbolic` is not a name the Adwaita theme
+   * has, and a missing `-symbolic` on a `Gtk.MenuButton` is a white rectangle,
+   * not a placeholder.
    *
-   * The icon is the app's OWN (`icons.ts`): `view-filter-symbolic` is not a name
-   * the Adwaita theme has, and a missing `-symbolic` on a `Gtk.MenuButton` is a
-   * white rectangle, not a placeholder.
+   * The POPOVER is attached here rather than declared in the template because it
+   * is not part of this view's hierarchy — it is shown over the results, and a
+   * template cannot name a widget that is not one of its children. That is why
+   * `FilterPopover` is its own class over its own `.blp` rather than a corner of
+   * this one.
    *
    * `autohide` is the default and stays on — the popover closes on the click
    * outside that a person expects, and closing it is not the end of anything,
    * because the chip row still says what is set.
    */
-  private filterButton(): Gtk.MenuButton {
-    const button = new Gtk.MenuButton({
-      iconName: FILTER_ICON,
-      tooltipText: 'Filter',
-    });
-    const group = new Adw.PreferencesGroup();
-    group.add(this.maxPrice);
-    group.add(this.seller);
-    group.add(this.explain);
-    // The width the popover is BUILT at, and it is a floor rather than a cap:
-    // the three rows between them ask for 274 px (the price row is the widest —
-    // its spin buttons and its title, not its subtitle), and an `Adw` popover
-    // adds 80 px of its own padding and frame around that, which lands the
-    // popover at 354 px measured. Under a 360 px window, with 6 px to spare —
-    // and the margins are 6 rather than 12 because the popover already pads
-    // itself, so 12 was a second padding on top of the first.
-    const box = new Gtk.Box({
-      widthRequest: 250,
-      marginTop: 6,
-      marginBottom: 6,
-      marginStart: 6,
-      marginEnd: 6,
-    });
-    box.append(group);
-    button.set_popover(new Gtk.Popover({ child: box }));
-    return button;
+  private attachPopover(): void {
+    this.filterButton.set_popover(new FilterPopover().asPopover());
   }
 
   /**
