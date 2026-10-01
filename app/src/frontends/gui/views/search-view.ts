@@ -93,7 +93,7 @@ import PopoverTemplate from './search-view-popover.blp';
  * `search-view.blp` would name a widget that is not in the hierarchy the
  * template describes.
  */
-class FilterPopover extends Adw.Bin {
+class FilterPopover extends Gtk.Box {
   static {
     GObject.registerClass(
       {
