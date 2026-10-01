@@ -57,12 +57,14 @@ import {
   SELLER_TYPE_LABEL,
   type ActiveFilters,
   type ChipKey,
+  type FilterChip,
   type ProviderId,
 } from '@troedler/core';
 import { layoutOf, type ResultLayout } from '@troedler/store';
 
 import { search, type SourceResult } from '../../../core/actions/index.ts';
 import { isEnabled, type Context } from '../../../core/context.ts';
+import { setAccessibleLabel } from '../a11y.ts';
 import { FILTER_ICON } from '../icons.ts';
 import { OfferGrid } from '../widgets/offer-grid.ts';
 import { SourceCensus } from '../widgets/source-census.ts';
@@ -193,6 +195,7 @@ export class SearchView extends Gtk.Box {
     spacing: 6,
     marginStart: 12,
     marginEnd: 12,
+    marginBottom: 6,
   });
   private readonly results = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 6 });
   private readonly notices = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 4 });
@@ -361,7 +364,15 @@ export class SearchView extends Gtk.Box {
     for (const panel of this.panels.values()) panel.setExplain(this.explain.get_active());
   }
 
-  /** Rebuild the chip row: one flat button per active filter, nothing if none. */
+  /**
+   * Rebuild the chip row from the kernel's reading of the current filters.
+   *
+   * The sentences and the keys come from `activeFilterChips` rather than from
+   * the three controls one at a time: a filter is either set or it is not, and
+   * the widget that knows that is the one deciding what to show. Each chip
+   * removes ITS OWN filter, because a row of chips where every chip clears
+   * everything is a row of chips that gets one wrong click.
+   */
   private chipsChanged(): void {
     let child = this.chips.get_first_child();
     while (child) {
@@ -370,19 +381,40 @@ export class SearchView extends Gtk.Box {
       child = next;
     }
     const active = activeFilterChips(this.filters());
-    for (const chip of active) {
-      const button = new Gtk.Button({
-        label: chip.text,
-        cssClasses: ['chip'],
-        tooltipText: `${chip.text} — entfernen`,
-      });
-      button.connect('clicked', () => {
-        this.clearFilter(chip.key);
-        this.chipsChanged();
-      });
-      this.chips.append(button);
-    }
+    for (const chip of active) this.chips.append(this.chip(chip));
     this.chips.set_visible(active.length > 0);
+  }
+
+  /**
+   * One active filter, as a token you can take off again.
+   *
+   * A `Gtk.Button` with a label was the first version and it read as TEXT: a
+   * flat button with a label is indistinguishable from the sentence beside it, so
+   * there was nothing that looked pressable. A token is a pill with its own
+   * little `⊗`, and the `⊗` is a separate `Gtk.Button` rather than a gesture on
+   * the pill — one click then removes exactly the filter whose name is on it.
+   *
+   * The close button carries a `window-close-symbolic` and an accessible label
+   * that says WHICH filter it removes: „Erklären an" alone would be a chip
+   * labelled with a word and a cross.
+   */
+  private chip(chip: FilterChip): Gtk.Box {
+    const remove = new Gtk.Button({
+      iconName: 'window-close-symbolic',
+      cssClasses: ['flat', 'circular'],
+      tooltipText: `${chip.text} — entfernen`,
+    });
+    setAccessibleLabel(remove, `Filter ${chip.text} entfernen`);
+    remove.connect('clicked', () => {
+      this.clearFilter(chip.key);
+      this.chipsChanged();
+    });
+    const token = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, spacing: 4 });
+    token.append(new Gtk.Label({ label: chip.text }));
+    token.append(remove);
+    const pill = new Gtk.Box({ cssClasses: ['filter-chip'] });
+    pill.append(token);
+    return pill;
   }
 
   /** One filter back to its default, through the same signal a switch uses. */

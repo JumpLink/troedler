@@ -79,4 +79,33 @@ export const APP_CSS = `
   font-feature-settings: "tnum" 1;
   font-family: monospace;
 }
+
+/* An active filter, as a token. libadwaita's \`.chip\` is defined for a BUTTON, and
+   a button cannot hold a second button inside it, so the pill is a box: the label
+   on the left, a \`⊗\` on the right that removes exactly that filter.
+
+   The colours are libadwaita's own named ones (\`@accent_bg_color\` for the pill,
+   \`@accent_fg_color\` for its text), not a palette — the same rule as everything
+   above, and the reason the token follows the system when somebody switches to
+   dark. Radius and padding are this app's own proportions. */
+.filter-chip {
+  padding: 3px 4px 3px 12px;
+  border-radius: 999px;
+  background-color: @accent_bg_color;
+  color: @accent_fg_color;
+  font-size: 0.9em;
+  font-weight: 500;
+}
+
+/* The ⊗ inside the token: no second border, and enough of a target to press. */
+.filter-chip button {
+  padding: 0;
+  min-width: 20px;
+  min-height: 20px;
+  border-radius: 999px;
+}
+
+.filter-chip button:hover {
+  background-color: alpha(@accent_fg_color, 0.12);
+}
 `;
