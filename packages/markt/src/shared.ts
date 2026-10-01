@@ -139,9 +139,11 @@ export function cleanDescription(raw: string | null | undefined): string | null 
  * That began as a workaround — under gjsify ≤ 0.41.0 the URL class exposed
  * getters only and `url.search = ''` threw — and the mutating version parsed
  * every page correctly under Node while returning zero rows under GJS. All ten
- * setters work as of 0.52.0 (measured, not assumed — `search` alone from
- * 0.42.0, the other nine at #1678), and this shape stays: it says what it
- * builds instead of subtracting from something else.
+ * setters measure green under gjs as of 0.52.0 (`search` alone from 0.42.0, the
+ * other nine at #1678) and still do at 0.53.0 — re-measured at the 0.53.0 bump
+ * by `scripts/probe-gjsify-0.53.mjs`, 24 of 24 green under gjs and under node.
+ * The shape stays: it says what it builds instead of subtracting from something
+ * else.
  */
 export function canonicalUrl(origin: string, path: string | null | undefined): string | null {
   const p = (path ?? '').trim();
