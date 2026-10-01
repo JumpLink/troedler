@@ -43,11 +43,18 @@ const LINE = ['caption'];
  * and the list glyphs are not a disclosure idiom in Adwaita, they are two
  * different *actions*, and the summary line ends in a three-dot menu that then
  * turns into a list — a button that changes what it means when you press it.
- * `pan-down-symbolic` / `pan-end-symbolic` are the pan arrows an
+ * `pan-end-symbolic` / `pan-down-symbolic` are the pan arrows an
  * `Adw.ExpanderRow` uses, which is the thing this row behaves like.
+ *
+ * The pair was once the other way round. An arrow that points DOWN at a closed
+ * row says „there is more below" while the row is already showing everything
+ * that is below it, and one that points RIGHT at an open row hides the reading
+ * instruction the open state exists to give — the Adwaita convention is
+ * end→down, collapsed→expanded, and it is the only convention here that agrees
+ * with the accessible name two constants further down.
  */
-const COLLAPSED_ICON = 'pan-down-symbolic';
-const EXPANDED_ICON = 'pan-end-symbolic';
+const COLLAPSED_ICON = 'pan-end-symbolic';
+const EXPANDED_ICON = 'pan-down-symbolic';
 
 /**
  * What a screen reader is told about the toggle.
