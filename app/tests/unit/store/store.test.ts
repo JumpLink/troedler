@@ -15,9 +15,9 @@ export default async () => {
 
   await describe('openDatabase', async () => {
     await it('proves reads work before anything trusts it', async () => {
-      // The canary. gjsify's node:sqlite swallows exceptions in all()/get(),
-      // so a broken read path would otherwise report an empty watchlist
-      // forever, with no error anywhere.
+      // The canary. It exists because this runtime once answered "no rows" where
+      // Node raises — a broken read path would otherwise report an empty
+      // watchlist forever, with no error anywhere.
       const store = fresh();
       expect(store.stats().searches).toBe(0);
     });

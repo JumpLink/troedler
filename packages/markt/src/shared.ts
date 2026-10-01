@@ -138,9 +138,10 @@ export function cleanDescription(raw: string | null | undefined): string | null 
  * Composed from `origin` + `pathname` rather than by clearing `url.search`.
  * That began as a workaround — under gjsify ≤ 0.41.0 the URL class exposed
  * getters only and `url.search = ''` threw — and the mutating version parsed
- * every page correctly under Node while returning zero rows under GJS. The
- * setters work as of 0.42.0 (measured, not assumed), and this shape stays: it
- * says what it builds instead of subtracting from something else.
+ * every page correctly under Node while returning zero rows under GJS. All ten
+ * setters work as of 0.52.0 (measured, not assumed — `search` alone from
+ * 0.42.0, the other nine at #1678), and this shape stays: it says what it
+ * builds instead of subtracting from something else.
  */
 export function canonicalUrl(origin: string, path: string | null | undefined): string | null {
   const p = (path ?? '').trim();

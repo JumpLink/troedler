@@ -319,22 +319,29 @@ and every state worth checking is on the other side of a query.
 gjsify is a first-party dependency, not vendored third-party code. A missing capability gets fixed
 in the `gjsify/gjsify` submodule with a test, and troedler picks it up on a version bump.
 
-**Two gaps went this way and one of them is closed as of gjsify 0.42.0** — worth keeping because
-they are what the rule is for, and because both bit on GJS while Node stayed green:
+**Three gaps went this way and all three are closed — the last two at gjsify 0.52.0.** They stay
+written down because they are what the rule is for, and because every one bit on GJS while Node
+stayed green:
 
 - **`URL` was immutable.** Every setter threw, and `url.searchParams` handed back a DETACHED copy
   whose `set`/`append`/`delete` reported success and were discarded. Discogs' `/database/search`
   therefore went out with no query at all and answered with 34.7 million rows of everything.
-  PR #1245 fixed `searchParams` and the `search` setter — **and only those.** Measured again at the
-  0.47.0 bump, one setter at a time: `search` works, and `protocol`, `username`, `password`, `host`,
-  `hostname`, `port`, `pathname`, `hash` and `href` all still throw `setting getter-only property`,
-  where all ten work on Node. `scripts/guard-url-setters.mjs` refuses the nine in CI. The lesson is
-  in that guard's header: its predecessor covered `pathname` too and was deleted WHOLE at the 0.42.0
-  bump because the part that had been measured turned green.
+  PR #1245 (0.42.0) fixed `searchParams` and the `search` setter — **and only those**, which is the
+  part worth remembering: at the 0.47.0 bump a 21-check probe still printed `protocol`, `username`,
+  `password`, `host`, `hostname`, `port`, `pathname`, `hash` and `href` as
+  `setting getter-only property`. #1678 (0.52.0) fixed the nine; re-measured on 0.52.0, all ten are
+  green, so `scripts/guard-url-setters.mjs` was deleted WHOLE. Its predecessor had been deleted the
+  same way at 0.42.0 — on a PARTIAL fix, which is how the remaining nine spent five releases
+  unguarded. **Delete a guard when the measurement has no red line left, not when one line turned.**
 - **`@gjsify/domparser` was an XML parser.** No HTML5 tree construction, no entity decoding, and
   `querySelectorAll` matched tag names only — on a real 329 KB results page, `.aditem` → 0 hits.
   `@troedler/html` wrapped three npm parsers until PR #1250 landed an HTML5 tokenizer, a tree
   builder and a CSS Selectors 4 engine. The façade is narrow precisely so that swap was one file.
+- **`node:sqlite` swallowed every SQL error.** `all()` and `get()` caught and returned `[]` /
+  `undefined`, so a query against a column that does not exist reported "nothing found" forever.
+  #1674 (0.52.0) lets a rejected query raise; #1756 made `undefined` bind NULL like Node 26.10.
+  The canary in `packages/store/src/db.ts` STAYS — it cost three statements at open, and a read
+  path that quietly returns nothing was never only about swallowed exceptions.
 
 Unavoidable shims carry **one of two markers, and they mean opposite things at bump time**:
 
@@ -353,6 +360,13 @@ tree construction, entity decoding, selectors, and a `node:sqlite` read round-tr
 byte-identical, 22 green and 3 red on each, which is the useful result twice over: no regression,
 and the three reds are two open gaps nobody had written down (the URL setters above, and `all()` /
 `get()` still swallowing SQL errors — see the marker in `packages/store/src/db.ts`).
+
+**0.47.0 → 0.52.0, same method, opposite outcome.** The 21-check probe was rebuilt and run under
+gjs on both versions, and this time the diff IS the useful result: **14 red of 21 on 0.47.0, 0 red
+on 0.52.0.** Every red turned green — the nine setters, `all()`/`get()` raising (missing table,
+missing column), and `undefined` binding NULL. That is also the honest reading of the gap markers:
+both had said "unfixed", and both were true until the release that carried the fix. The HTML5
+parser checks were covered by the adapters' own suites, which run on gjs AND node.
 
 Watch for spec differences the old library papered over. The one that bit: `tagName` is UPPERCASE
 in the DOM and was lowercase in `domhandler`, so `node.tagName === 'dt'` silently stopped matching
