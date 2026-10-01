@@ -1,0 +1,132 @@
+using Gtk 4.0;
+using Adw 1;
+
+// The search screen's static frame: the clamped toolbar, the chip row under it,
+// the notices box, and the scroller holding the empty-state page over the
+// results box.
+//
+// Everything with a LOOP in it stays in TypeScript. The panels, the
+// `SourceCensus` and the `OfferGrid` are appended to `results` by `prepare()` —
+// a template cannot say "one of these per enabled source", and a custom `$Widget`
+// inside a template is refused by the parser anyway. The five inputs are named
+// in `InternalChildren` because the constructor reads and connects them;
+// `status` is named because `describeLayout()` writes its description.
+//
+// The popover is NOT in here. It is not part of this view's hierarchy — it is a
+// `Gtk.Popover` the filter button owns and shows over the results — so it lives
+// in `search-view-popover.blp` and is composed in TypeScript. Putting it here
+// would mean naming a child that is not a child.
+template $TroedlerSearchView : Gtk.Box {
+  orientation: vertical;
+
+  // Clamped rather than free: without it a 4K window stretches the row to its
+  // full width and the entry — the only `hexpand` child — becomes a text field
+  // a mile long with the query somewhere in the middle of it. 720 px is where a
+  // search field stops being a field and starts being a banner, and `Adw.Clamp`
+  // is the one widget in this toolkit that caps a natural width at all
+  // (`max-width-chars` on a label that ellipsizes does not — measured on a
+  // `Gtk.Picture` card, in AGENTS.md).
+  Adw.Clamp {
+    maximum-size: 720;
+    tightening-threshold: 480;
+
+    // 12 px of margin and 6 px of spacing, against the 8/8 the old row used.
+    // Below 600 px that is 14 px back for the entry out of a window that has
+    // 240 px of it to spare, and above 600 px nobody can see the difference — a
+    // measured trade, not a taste one.
+    Gtk.Box {
+      orientation: horizontal;
+      spacing: 6;
+      margin-top: 12;
+      margin-bottom: 12;
+      margin-start: 12;
+      margin-end: 12;
+
+      // `width-chars: 12` AND `hexpand: true` are BOTH load-bearing, and this is
+      // the one width in this view that is not negotiable. `Gtk.Box` hands every
+      // child its natural width and gives the surplus to the only `hexpand` one
+      // — this entry. When the row beside it carried five controls, below the
+      // width they needed between them there was no surplus, so the entry
+      // absorbed the whole deficit and rendered as the `⊗` clear glyph with the
+      // query squeezed out of the allocation: measured 57 px of entry and 13 px
+      // of inner `GtkText` at a 600 px window, with `TR_APP_QUERY=fahrrad` loaded
+      // and the results being bicycles. It held the full string the whole time;
+      // nothing about the query was wrong. Drop either property here and the
+      // deficit goes straight back into the entry.
+      Gtk.SearchEntry entry {
+        hexpand: true;
+        width-chars: 12;
+        placeholder-text: _("Wonach suchen?");
+      }
+
+      // `troedler-filter-symbolic`, NOT `view-filter-symbolic`: Adwaita has no
+      // funnel, and a missing `-symbolic` on a `Gtk.MenuButton` renders as an
+      // empty white rectangle rather than a placeholder. The icon is bundled and
+      // registered by `icons.ts`; `scripts/guard-icon-names.mjs` fails the build
+      // on a name that does not resolve. The popover itself is attached in
+      // TypeScript — see the note above this template.
+      Gtk.MenuButton filter_button {
+        icon-name: "troedler-filter-symbolic";
+        tooltip-text: _("Filter");
+      }
+
+      // Label and NO `icon-name`. GTK4 draws the icon and drops the label when a
+      // button has both, which is how a „Stopp" button came to wear a magnifying
+      // glass — the one glyph that means the opposite of what pressing it does.
+      // `setRunning()` swaps label, tooltip and style class in one place.
+      Gtk.Button go_button {
+        label: _("Suchen");
+        tooltip-text: _("Suche starten (Enter)");
+        styles ["suggested-action"]
+      }
+    }
+  }
+
+  // The receipt for a filter that is set but no longer on screen: a popover is
+  // where filters are set in current Adwaita apps, and it is also where a filter
+  // disappears from view. Visible only when a filter is set — `chipsChanged()`
+  // decides that, in the same place that decides what a chip looks like.
+  Gtk.Box chips {
+    orientation: horizontal;
+    spacing: 6;
+    margin-start: 12;
+    margin-end: 12;
+    margin-bottom: 6;
+  }
+
+  Gtk.Box notices {
+    orientation: vertical;
+    spacing: 4;
+    margin-start: 12;
+    margin-end: 12;
+  }
+
+  // Never horizontally: every label in here wraps, so a horizontal scrollbar
+  // could only ever mean something is being hidden rather than wrapped — and
+  // what gets hidden first is the right-hand end of the sentence that explains
+  // why a source found nothing.
+  Gtk.ScrolledWindow scroller {
+    vexpand: true;
+    hscrollbar-policy: never;
+    vscrollbar-policy: automatic;
+
+    Gtk.Box {
+      orientation: vertical;
+
+      Adw.StatusPage status {
+        title: _("Mehrere Gebrauchtwaren-Marktplätze, eine Anfrage");
+        icon-name: "system-search-symbolic";
+        vexpand: true;
+      }
+
+      // `prepare()` empties and refills this for the active layout.
+      Gtk.Box results {
+        orientation: vertical;
+        spacing: 6;
+        margin-start: 12;
+        margin-end: 12;
+        margin-bottom: 12;
+      }
+    }
+  }
+}

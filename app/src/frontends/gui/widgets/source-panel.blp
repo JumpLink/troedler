@@ -1,0 +1,43 @@
+using Gtk 4.0;
+using Adw 1;
+
+// The panel's static frame: a card wrapping the source's heading over the box
+// its five states are appended into. Everything below `body` is dynamic — the
+// spinner, the rows, the band, the explain lines — and stays in TypeScript,
+// because a loop has no declarative spelling.
+//
+// `heading` and `body` are the two children this class touches, so they are the
+// two named in `InternalChildren`. Nothing else in here is.
+template $TroedlerSourcePanel : Adw.Bin {
+  styles ["card"]
+
+  margin-top: 6;
+  margin-bottom: 6;
+
+  Gtk.Box {
+    orientation: vertical;
+    spacing: 4;
+    margin-top: 12;
+    margin-bottom: 12;
+
+    // Wrapping, and it is not cosmetic: a skipped source's whole worth is the
+    // SENTENCE saying why, and „uebersprungen — EBAY_CLIENT_ID und …" ran off
+    // the right edge of the window where nobody would read the half that
+    // matters. `word-char` rather than `word`, because these sentences end in
+    // identifiers and paths that must break anywhere rather than only at spaces.
+    Gtk.Label heading {
+      xalign: 0;
+      wrap: true;
+      wrap-mode: word-char;
+      max-width-chars: 72;
+      margin-start: 12;
+      margin-end: 12;
+      styles ["title-4"]
+    }
+
+    Gtk.Box body {
+      orientation: vertical;
+      spacing: 4;
+    }
+  }
+}

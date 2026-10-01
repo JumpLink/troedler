@@ -32,6 +32,8 @@ import type { SourceResult } from '../../../core/actions/index.ts';
 import { OfferGrid } from './offer-grid.ts';
 import { outcomeClasses } from './outcome.ts';
 
+import Template from './source-panel.blp';
+
 function dim(text: string, extra: string[] = []): Gtk.Label {
   return new Gtk.Label({
     label: text,
@@ -47,42 +49,45 @@ function dim(text: string, extra: string[] = []): Gtk.Label {
 
 export class SourcePanel extends Adw.Bin {
   static {
-    GObject.registerClass({ GTypeName: 'TroedlerSourcePanel' }, this);
+    GObject.registerClass(
+      {
+        GTypeName: 'TroedlerSourcePanel',
+        Template,
+        // Only the two children this class reaches for. The heading's wrapping
+        // and the card's margins live in the template, and the reason they exist
+        // is written there.
+        InternalChildren: ['heading', 'body'],
+      },
+      this,
+    );
+  }
+
+  declare private readonly _heading: Gtk.Label;
+  declare private readonly _body: Gtk.Box;
+
+  private get heading(): Gtk.Label {
+    return this._heading;
+  }
+
+  private get body(): Gtk.Box {
+    return this._body;
   }
 
   readonly provider: ProviderId;
   private readonly context: Context;
   /** The market's own name. `heading` becomes the report sentence on settle. */
   private readonly sourceLabel: string;
-  private readonly box = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 4 });
-  // Wrapping, and it is not cosmetic: a skipped source's whole worth is the
-  // SENTENCE saying why, and „übersprungen — EBAY_CLIENT_ID und …" ran off the
-  // right edge of the window where nobody would read the half that matters.
-  private readonly heading = new Gtk.Label({
-    xalign: 0,
-    wrap: true,
-    wrapMode: Pango.WrapMode.WORD_CHAR,
-    maxWidthChars: 72,
-    cssClasses: ['title-4'],
-  });
-  private readonly body = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 4 });
   private explain: boolean;
 
   constructor(context: Context, provider: ProviderId, label: string, explain: boolean) {
-    super({ cssClasses: ['card'], marginTop: 6, marginBottom: 6 });
+    super();
     this.provider = provider;
     this.context = context;
     this.sourceLabel = label;
     this.explain = explain;
 
-    this.box.set_margin_top(12);
-    this.box.set_margin_bottom(12);
-    this.heading.set_margin_start(12);
-    this.heading.set_margin_end(12);
+    // The market's own name until the report replaces it on settle.
     this.heading.set_label(label);
-    this.box.append(this.heading);
-    this.box.append(this.body);
-    this.set_child(this.box);
 
     this.pending();
   }
