@@ -56,7 +56,12 @@
       "description": "troedler searches eBay, classified-ad sites, public-authority auctions and collector marketplaces with one query, as a CLI and an MCP server. Local, per user, never a hosted crawler — robots.txt is enforced as a gate, not a hint, and every source that is reachable without a login ships off until switched on by the person running it.",
       "homepageUrl": "https://github.com/JumpLink/troedler",
       "bugtrackerUrl": "https://github.com/JumpLink/troedler/issues",
-      "vcsBrowserUrl": "https://github.com/JumpLink/troedler"
+      "vcsBrowserUrl": "https://github.com/JumpLink/troedler",
+      "flatpak": {
+        "finishArgs": [
+          "--share=network"
+        ]
+      }
     },
     "excludeGlobals": [
       "document",
