@@ -435,6 +435,11 @@ re-implemented on the way in — same helpers, same signatures, so no client sur
 pins the fail-closed direction, because an upstream flip would otherwise surface only as a
 mutating tool in `tools/list`; `npm run test:mcp` asserts the same on the wire.
 
+`build:app` writes a `<name>.d.blp.ts` beside every `.blp` (ADR 0088 § 4) and those are
+COMMITTED, so the drift gate reads a real artifact; `.oxfmtrc.json` excludes them, because a
+formatter that rewrote a file two producers already write would make `blueprint types --check`
+unsatisfiable.
+
 ## Conventions
 
 - Conventional commits (`feat(ebay): …`, `fix(store): …`), imperative, subject ≤ 50 chars.

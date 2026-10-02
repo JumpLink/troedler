@@ -19,6 +19,7 @@
     "**/lib",
     "**/coverage",
     "**/*.gjs.mjs",
-    "**/*.node.mjs"
+    "**/*.node.mjs",
+    "**/*.d.blp.ts"
   ]
 }
