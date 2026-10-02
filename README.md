@@ -168,6 +168,22 @@ Nothing is ever written inside this repository.
 
 `troedler cache purge` clears the local record; `troedler config path` prints where everything is.
 
+## Releasing
+
+`git tag vX.Y.Z && git push --tags` runs the whole of CI — tests, type check, lint — and, if it
+passes, builds and attaches every installable format to the tag's GitHub release:
+
+- Linux: `.deb`, `.rpm`, `.flatpak`
+- macOS: `.app.zip` (arm64 + x64)
+- Windows: a program-directory `.zip` and `.msi` (x64)
+
+All of it unsigned, which is a legitimate deliverable rather than a placeholder (gjsify ADR 0024
+§ A13) — see the comment above the "Attach everything to the release" step in
+[release.yml](.github/workflows/release.yml) for where `--sign`/`--notarize` would attach once a
+signing identity exists. AppImage is left out on purpose: this ships as a CLI/MCP binary with no
+desktop entry to double-click, and apt/dnf already cover the terminal install.
+`workflow_dispatch` re-cuts a tag's assets without moving the tag (`tag` + `publish` inputs).
+
 ## Contributing, and objecting
 
 If you operate one of these sites and would rather troedler did not read it, open an issue or write
