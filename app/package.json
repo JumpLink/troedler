@@ -72,6 +72,7 @@
   "devDependencies": {
     "@gjsify/adwaita-app": "0.54.0",
     "@gjsify/cli": "0.54.0",
+    "@gjsify/mcp": "0.54.0",
     "@gjsify/node-globals": "0.54.0",
     "@gjsify/rolldown-native": "0.54.0",
     "@gjsify/runtime": "0.54.0",

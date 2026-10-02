@@ -9,11 +9,11 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { mcpErrorFrom, mcpSuccess } from '@gjsify/mcp';
 import { z } from 'zod';
 
 import { listProviders, quotas } from '../../../core/actions/index.ts';
 import type { Context } from '../../../core/context.ts';
-import { mcpErrorFrom, mcpSuccess } from '../types.ts';
 
 export function registerProviderTools(server: McpServer, context: Context): void {
   server.registerTool(

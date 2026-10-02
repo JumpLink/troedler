@@ -1,9 +1,9 @@
+import { applyReadOnlyGate } from '@gjsify/mcp';
 import { describe, expect, it } from '@gjsify/unit';
 
 import { registerProviderTools } from '../../../src/frontends/mcp/tools/providers.ts';
 import { registerSearchTools } from '../../../src/frontends/mcp/tools/search.ts';
 import { registerWatchTools } from '../../../src/frontends/mcp/tools/watch.ts';
-import { applyReadOnlyGate } from '../../../src/frontends/mcp/runtime.ts';
 import type { Context } from '../../../src/core/context.ts';
 import { createRecorder } from './recorder.ts';
 
