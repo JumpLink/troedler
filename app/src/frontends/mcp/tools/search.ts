@@ -17,6 +17,7 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { mcpErrorFrom, mcpSuccess } from '@gjsify/mcp';
 import { z } from 'zod';
 
 import { CONDITION_ORDER, fmtLocation, fmtMoney, RESULTS_PER_PROVIDER, RESULTS_TOTAL } from '@troedler/core';
@@ -24,7 +25,6 @@ import type { Condition, Listing, ProviderId } from '@troedler/core';
 
 import { allListings, getListing, search } from '../../../core/actions/index.ts';
 import type { Context } from '../../../core/context.ts';
-import { mcpErrorFrom, mcpSuccess } from '../types.ts';
 
 const PROVIDER_IDS: readonly ProviderId[] = [
   'ebay',

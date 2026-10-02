@@ -146,7 +146,7 @@ next person re-deriving the same guess.
 
 - Deps: **`gjsify install`** — never `npm install`, it prunes the gjsify deps. Node 24 to
   bootstrap (gjsify's install-backend prebuilds target 24; Fedora's 22 segfaults).
-- All five `@gjsify/*` packages are pinned to the **same exact version**. gjsify ships as one
+- All six `@gjsify/*` packages are pinned to the **same exact version**. gjsify ships as one
   release train and a CLI ↔ libs skew produces silently broken bundles. Bump them together.
 - `typescript` is pinned `^6.0.3`, **not** 7: `gjsify tsc` runs a bundle with TypeScript 6.0.3
   baked in, so a local 7 would give a different diagnostic set than CI.
@@ -346,11 +346,10 @@ stayed green:
   whose `set`/`append`/`delete` reported success and were discarded. Discogs' `/database/search`
   therefore went out with no query at all and answered with 34.7 million rows of everything.
   PR #1245 (0.42.0) fixed `searchParams` and the `search` setter — **and only those**, which is the
-  part worth remembering: at the 0.47.0 bump a 21-check probe still printed `protocol`, `username`,
-  `password`, `host`, `hostname`, `port`, `pathname`, `hash` and `href` as
-  `setting getter-only property`. #1678 (0.52.0) fixed the nine; re-measured on 0.52.0, all ten are
-  green, so `scripts/guard-url-setters.mjs` was deleted WHOLE. Its predecessor had been deleted the
-  same way at 0.42.0 — on a PARTIAL fix, which is how the remaining nine spent five releases
+  part worth remembering: at the 0.47.0 bump a 21-check probe still printed all nine other setters
+  as `setting getter-only property`. #1678 (0.52.0) fixed the nine; re-measured on 0.52.0, all ten
+  are green, so `scripts/guard-url-setters.mjs` was deleted WHOLE. Its predecessor had been deleted
+  the same way at 0.42.0 — on a PARTIAL fix, which is how the remaining nine spent five releases
   unguarded. **Delete a guard when the measurement has no red line left, not when one line turned.**
 - **`@gjsify/domparser` was an XML parser.** No HTML5 tree construction, no entity decoding, and
   `querySelectorAll` matched tag names only — on a real 329 KB results page, `.aditem` → 0 hits.
@@ -361,8 +360,7 @@ stayed green:
   #1674 (0.52.0) lets a rejected query raise; #1756 made `undefined` bind NULL like Node 26.10.
   The canary in `packages/store/src/db.ts` STAYS — it cost three statements at open, and a read
   path that quietly returns nothing was never only about swallowed exceptions. Three MORE libgda
-  gaps closed at 0.53.0 and this store sits on two of them: #1841 (an INTEGER above 2^31 was
-  refused outright, and `price_minor` is INTEGER) and #1893 (`EXISTS` subqueries did not parse).
+  gaps closed at 0.53.0 and this store sits on two of them (#1841, #1893 — measured below).
 
 Unavoidable shims carry **one of two markers, and they mean opposite things at bump time**:
 
@@ -376,18 +374,16 @@ it meant running both parsers over the same live pages and diffing what the adap
 (byte-identical over 10 auction cards, one full detail page and 20 classified ads).
 
 A probe that only covers what the release note mentions measures the note. The 0.42.0 → 0.47.0 bump
-was checked with a 25-check capability probe built and run under gjs on BOTH versions — URL, HTML5
-tree construction, entity decoding, selectors, and a `node:sqlite` read round-trip. Output was
-byte-identical, 22 green and 3 red on each, which is the useful result twice over: no regression,
-and the three reds are two open gaps nobody had written down (the URL setters above, and `all()` /
-`get()` still swallowing SQL errors — see the marker in `packages/store/src/db.ts`).
+was checked with a 25-check capability probe built and run under gjs on BOTH versions; output was
+byte-identical, 22 green and 3 red on each. No regression, and the three reds are two open gaps
+nobody had written down (the URL setters above, and `all()` / `get()` still swallowing SQL errors —
+see the marker in `packages/store/src/db.ts`).
 
-**0.47.0 → 0.52.0, same method, opposite outcome.** The 21-check probe was rebuilt and run under
-gjs on both versions, and this time the diff IS the useful result: **14 red of 21 on 0.47.0, 0 red
-on 0.52.0.** Every red turned green — the nine setters, `all()`/`get()` raising (missing table,
-missing column), and `undefined` binding NULL. That is also the honest reading of the gap markers:
-both had said "unfixed", and both were true until the release that carried the fix. The HTML5
-parser checks were covered by the adapters' own suites, which run on gjs AND node.
+**0.47.0 → 0.52.0, same method, opposite outcome.** The 21-check probe on both versions, and this
+time the diff IS the result: **14 red of 21 on 0.47.0, 0 red on 0.52.0** — the nine setters,
+`all()`/`get()` raising (missing table, missing column), `undefined` binding NULL. Also the honest
+reading of the gap markers: both had said "unfixed", and both were true until the release that
+carried the fix. The HTML5 parser checks were covered by the adapters' own suites, on gjs AND node.
 
 **0.52.0 → 0.53.0: the probe became a committed file, because a probe that lives only in a
 conversation cannot be re-run by the next person.** `scripts/probe-gjsify-0.53.mjs` holds it, and
@@ -431,9 +427,13 @@ Watch for spec differences the old library papered over. The one that bit: `tagN
 in the DOM and was lowercase in `domhandler`, so `node.tagName === 'dt'` silently stopped matching
 and a whole `<dl>` came back empty. Prefer `localName`.
 
-`app/src/frontends/mcp/runtime.ts` is a **verbatim copy** of postbote's, which carries it as an
-extraction candidate for `@gjsify/mcp`. This is the second copy, so the duplication rule now
-applies: change it in both or in neither, and prefer extracting it.
+`app/src/frontends/mcp/runtime.ts` was a **verbatim copy** of postbote's, which carried it as an
+extraction candidate for `@gjsify/mcp`. At 0.54.0 it IS that package: gate, stdio lifecycle and
+uniform tool result moved upstream, `runtime.ts` and `types.ts` are gone, and nothing was
+re-implemented on the way in — same helpers, same signatures, so no client surface moved.
+**The tests do NOT move with it** — `gate.test.ts` imports the gate from `@gjsify/mcp` and still
+pins the fail-closed direction, because an upstream flip would otherwise surface only as a
+mutating tool in `tools/list`; `npm run test:mcp` asserts the same on the wire.
 
 ## Conventions
 

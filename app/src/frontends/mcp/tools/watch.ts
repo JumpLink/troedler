@@ -1,20 +1,21 @@
 /**
  * Saved searches, the local index and price history.
  *
- * `market_watch_save` MUTATES, so it carries `readOnlyHint: false` and the gate
- * in runtime.ts drops it unless `TROEDLER_MCP_ALLOW_WRITE=1`. That is the
- * point of the gate: the annotation is the truth, and forgetting it costs a
- * missing tool rather than a silent write.
+ * `market_watch_save` MUTATES, so it carries `readOnlyHint: false` and
+ * `applyReadOnlyGate` from `@gjsify/mcp` drops it unless
+ * `TROEDLER_MCP_ALLOW_WRITE=1`. That is the point of the gate: the annotation
+ * is the truth, and forgetting it costs a missing tool rather than a silent
+ * write.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { mcpError, mcpErrorFrom, mcpSuccess } from '@gjsify/mcp';
 import { z } from 'zod';
 
 import { fmtMinor, parseListingKey } from '@troedler/core';
 
 import { addSearch, listSearches, removeSearch } from '../../../core/actions/index.ts';
 import type { Context } from '../../../core/context.ts';
-import { mcpError, mcpErrorFrom, mcpSuccess } from '../types.ts';
 
 export function registerWatchTools(server: McpServer, context: Context): void {
   server.registerTool(
