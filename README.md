@@ -88,7 +88,8 @@ never written to disk and never re-published.
 
 ## Sources
 
-Every source has a record under [`docs/quellen/`](docs/quellen/) with its `robots.txt` findings,
+Every source has a record under [`docs/quellen/`](docs/quellen/) — indexed together with the other
+`docs/` notes in [`docs/README.md`](docs/README.md) — with its `robots.txt` findings,
 the relevant terms clause, and the date a human last checked. `troedler terms` prints the summary
 and `troedler robots <url>` answers whether troedler would fetch a given URL and what decides it —
 the opt-out list, the switch, robots.txt, or, on an official API, the operator's licence. It reports
