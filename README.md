@@ -88,7 +88,8 @@ never written to disk and never re-published.
 
 ## Sources
 
-Every source has a record under [`docs/quellen/`](docs/quellen/) with its `robots.txt` findings,
+Every source has a record under [`docs/quellen/`](docs/quellen/) — indexed together with the other
+`docs/` notes in [`docs/README.md`](docs/README.md) — with its `robots.txt` findings,
 the relevant terms clause, and the date a human last checked. `troedler terms` prints the summary
 and `troedler robots <url>` answers whether troedler would fetch a given URL and what decides it —
 the opt-out list, the switch, robots.txt, or, on an official API, the operator's licence. It reports
@@ -167,6 +168,22 @@ Nothing is ever written inside this repository.
 | `$XDG_CACHE_HOME/troedler/` | HTTP cache, TTL-bound per source |
 
 `troedler cache purge` clears the local record; `troedler config path` prints where everything is.
+
+## Releasing
+
+`git tag vX.Y.Z && git push --tags` runs the whole of CI — tests, type check, lint — and, if it
+passes, builds and attaches every installable format to the tag's GitHub release:
+
+- Linux: `.deb`, `.rpm`, `.flatpak`
+- macOS: `.app.zip` (arm64 + x64)
+- Windows: a program-directory `.zip` and `.msi` (x64)
+
+All of it unsigned, which is a legitimate deliverable rather than a placeholder (gjsify ADR 0024
+§ A13) — see the comment above the "Attach everything to the release" step in
+[release.yml](.github/workflows/release.yml) for where `--sign`/`--notarize` would attach once a
+signing identity exists. AppImage is left out on purpose: this ships as a CLI/MCP binary with no
+desktop entry to double-click, and apt/dnf already cover the terminal install.
+`workflow_dispatch` re-cuts a tag's assets without moving the tag (`tag` + `publish` inputs).
 
 ## Contributing, and objecting
 

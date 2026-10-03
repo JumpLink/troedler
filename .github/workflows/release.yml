@@ -1,0 +1,116 @@
+name: Release
+
+# A tag is a release: `git tag v0.1.0 && git push --tags` builds every target, runs the whole of
+# CI, and hangs the packages off the tag on GitHub. The build itself is NOT repeated here — the
+# `build` job below calls .github/workflows/ci.yml, so there is exactly one definition of how the
+# toolchain is installed and what "green" means. A release therefore cannot be cut from a commit
+# whose tests, type check or lint did not pass.
+#
+# ci.yml ships `ship-deb-rpm` (`.deb`, `.rpm`), `ship-macos-windows` (both `macos-app-zip`s,
+# `windows-dir-zip`, `.msi`) and `ship-flatpak` (`.flatpak`) as uploaded artifacts; this workflow
+# only downloads and attaches them. Every one of those assembles on the SAME `fedora:44`
+# container as the rest of CI: `gjsify ship`'s darwin/windows targets are not host-bound to
+# assemble, only to run, so a Mac or Windows runner stays absent here on purpose — see the
+# comment on the publish job below.
+on:
+  push:
+    tags: ["v*"]
+  # Re-cut assets for a tag that already exists, without moving the tag.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build from (e.g. v0.2.0). Empty = the selected branch."
+        required: false
+        default: ""
+        type: string
+      publish:
+        description: "Attach the artifacts to the GitHub release (needs a tag)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+# Two tags pushed seconds apart would otherwise run twice against one release and upload in
+# whichever order finished last. Queued rather than cancelled: a half-uploaded release is worse
+# than a slow one.
+concurrency:
+  group: release-${{ github.workflow }}-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Attach to the release
+    needs: build
+    # A branch dry run (workflow_dispatch with no tag or publish=false) builds the artifacts and
+    # stops there: `inputs.publish` alone is not enough, because the name it would upload to is a
+    # branch, not a release.
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || (inputs.publish && inputs.tag != '') }}
+    # Only this job needs the token; the build above needs nothing but the checkout.
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      # The CLI's packages, out of CI rather than built here (see the header). `ship-*` matches
+      # all three upload names ci.yml writes (`ship-deb-rpm`, `ship-macos-windows`,
+      # `ship-flatpak`), merged into one directory — a release either carries all of them or does
+      # not exist yet.
+      - name: Fetch the CLI packages CI built
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ship-*
+          merge-multiple: true
+          path: assets
+
+      # `ship` exits 0 after writing nothing when a target is filtered away, so the directory is
+      # checked rather than assumed non-empty — a glob that matches nothing expands to itself,
+      # so `gh release upload … assets/*` on an empty directory would upload a file literally
+      # named `assets/*` and report success.
+      #
+      # A tag push creates no release on its own, and `gh release upload` against a tag that has
+      # none fails with "release not found" after every artifact has already been built. Create
+      # it first when it is missing — as a draft, so the notes can be written before anyone is
+      # notified — and leave an existing one alone, which is what makes re-running this on a tag
+      # safe. `--clobber` on the upload makes a re-cut replace stale assets instead of erroring on
+      # a name collision.
+      - name: Attach everything to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -eu
+          ls -la assets
+          [ -n "$(ls -A assets)" ] || { echo "::error::no CLI packages were downloaded"; exit 1; }
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "no release for $TAG yet — creating it as a draft"
+            gh release create "$TAG" --title "$TAG" --draft --generate-notes
+          fi
+          gh release upload "$TAG" assets/* --clobber
+          echo "Attached $(find assets -maxdepth 1 -type f | wc -l) asset(s) to $TAG:"
+          gh release view "$TAG" --json assets --jq '.assets[].name'
+
+      # Linux (`.deb`, `.rpm`, `.flatpak`), macOS (arm64 + x64, `macos-app-zip`) and Windows (x64,
+      # `windows-dir-zip` + `.msi`) ARE all attached now, from `assets/` above — assembling the
+      # macOS/Windows payloads does not need a Mac or a Windows runner (see the header), only
+      # naming the target so `gjsify install` does not skip the `optionalDependencies` runtime it
+      # would otherwise stage with no interpreter in it. What this does NOT do is RUN the Mach-O
+      # or PE payload: that is verified on its own OS or not at all, so a `macos-latest` /
+      # `windows-latest` job staying absent is a gap in verification, not in the release's
+      # contents, and the honest place to close it if it matters later.
+      #
+      # AppImage is deliberately absent from the whole pipeline: `kind: "cli"` ships no desktop
+      # entry to double-click, apt/dnf already cover the terminal install, and an MCP server is
+      # launched from an agent's config, never from a file manager — AppImage's one advantage
+      # (portable, double-clickable) buys nothing here.
+      #
+      # UNSIGNED on macOS and Windows, by design (ADR 0024 § A13 in gjsify) — this is a
+      # legitimate deliverable, not a placeholder. Where signing would attach, on a runner that
+      # actually holds the identity:
+      #   macOS   — `gjsify ship darwin --arch <arch> --skip-build --target macos-app-zip --sign
+      #             <identity>` (Developer ID; `--notarize <keychain-profile>` on top of that)
+      #   Windows — same shape, `--sign <certificate thumbprint or PFX path>` reaching `signtool`
+      #             (UNVERIFIED upstream: no run in gjsify has ever invoked it)

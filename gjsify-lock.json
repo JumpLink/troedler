@@ -1,6 +1,7 @@
 {
   "lockfileVersion": 4,
   "requested": [
+    "@gjsify/node-gi@0.54.0",
     "@modelcontextprotocol/sdk@^1.30.0",
     "dotenv@^17.4.2",
     "yargs@^18.1.0",
@@ -17,6 +18,9 @@
     "oxfmt@^0.64.0",
     "oxlint@^1.79.0",
     "typescript@^6.0.3",
+    "@gjsify/node-runtime-darwin-arm64@0.54.0",
+    "@gjsify/node-runtime-darwin-x64@0.54.0",
+    "@gjsify/node-runtime-win32-x64@0.54.0",
     "@gjsify/domparser@0.54.0"
   ],
   "packages": {
@@ -1123,6 +1127,14 @@
         "@gjsify/stream": "^0.54.0"
       }
     },
+    "node_modules/@gjsify/node-gi": {
+      "version": "0.54.0",
+      "resolved": "https://registry.npmjs.org/@gjsify/node-gi/-/node-gi-0.54.0.tgz",
+      "integrity": "sha512-iZFiwN8dTKVf7R+8RPC2bK/bb2ySQcvwN1HYbkXQXM64V9gDT65/ws83FdFxqnCasyt8y57hG4B/J03BrIAvwQ==",
+      "dependencies": {
+        "node-addon-api": "^8.0.0"
+      }
+    },
     "node_modules/@gjsify/node-globals": {
       "version": "0.54.0",
       "resolved": "https://registry.npmjs.org/@gjsify/node-globals/-/node-globals-0.54.0.tgz",
@@ -1181,6 +1193,42 @@
         "@gjsify/worker_threads": "^0.54.0",
         "@gjsify/diagnostics_channel": "^0.54.0"
       }
+    },
+    "node_modules/@gjsify/node-runtime-darwin-arm64": {
+      "version": "0.54.0",
+      "resolved": "https://registry.npmjs.org/@gjsify/node-runtime-darwin-arm64/-/node-runtime-darwin-arm64-0.54.0.tgz",
+      "integrity": "sha512-8gb9zm7u7kMhx+8ob6W+egUKLylEuXyVOfNFmAUaQ36feBGkTycIFnCKJZZ7fk6x99x4GDtPycdYdLxih5ockA==",
+      "os": [
+        "darwin"
+      ],
+      "cpu": [
+        "arm64"
+      ],
+      "optional": true
+    },
+    "node_modules/@gjsify/node-runtime-darwin-x64": {
+      "version": "0.54.0",
+      "resolved": "https://registry.npmjs.org/@gjsify/node-runtime-darwin-x64/-/node-runtime-darwin-x64-0.54.0.tgz",
+      "integrity": "sha512-qADAjSwc+MAVtwgBQtue4iHTz8E/Y2BnysiWMKfkSONLfLwf2C41Azuno9dGXzN/NONDvzVhOTgY6wiSHlsZwQ==",
+      "os": [
+        "darwin"
+      ],
+      "cpu": [
+        "x64"
+      ],
+      "optional": true
+    },
+    "node_modules/@gjsify/node-runtime-win32-x64": {
+      "version": "0.54.0",
+      "resolved": "https://registry.npmjs.org/@gjsify/node-runtime-win32-x64/-/node-runtime-win32-x64-0.54.0.tgz",
+      "integrity": "sha512-yJF8tpA52TkcS8+l8dJqJ/1B2p3bdobPBc5AvEv7W47xQ02UsBWiYB4oA6SvIpR6wlPF3PbRsJjeJebBgW+3CQ==",
+      "os": [
+        "win32"
+      ],
+      "cpu": [
+        "x64"
+      ],
+      "optional": true
     },
     "node_modules/@gjsify/npm-registry": {
       "version": "0.54.0",
@@ -2817,6 +2865,12 @@
       ],
       "optional": true
     },
+    "node_modules/@parcel/watcher/node_modules/node-addon-api": {
+      "version": "7.1.1",
+      "resolved": "https://registry.npmjs.org/node-addon-api/-/node-addon-api-7.1.1.tgz",
+      "integrity": "sha512-5m3bsyrjFWE1xf7nz7YXdN4udnVtXK6/Yfgn5qnahL6bCkf2yKt4k3nuTKAtT4r3IG8JNR2ncsIMdZuAzJjHQQ==",
+      "optional": true
+    },
     "node_modules/@rolldown/binding-android-arm-eabi": {
       "version": "1.2.5",
       "resolved": "https://registry.npmjs.org/@rolldown/binding-android-arm-eabi/-/binding-android-arm-eabi-1.2.5.tgz",
@@ -4063,10 +4117,9 @@
       "integrity": "sha512-mj7UPXE0jaqaOsukNZRUEfEi2AcL7C/vwmwcHV0O97eO1E1pxBZuyjlZrx5seTaNBg1U6+o35wpa35Qfcc+7ag=="
     },
     "node_modules/node-addon-api": {
-      "version": "7.1.1",
-      "resolved": "https://registry.npmjs.org/node-addon-api/-/node-addon-api-7.1.1.tgz",
-      "integrity": "sha512-5m3bsyrjFWE1xf7nz7YXdN4udnVtXK6/Yfgn5qnahL6bCkf2yKt4k3nuTKAtT4r3IG8JNR2ncsIMdZuAzJjHQQ==",
-      "optional": true
+      "version": "8.9.2",
+      "resolved": "https://registry.npmjs.org/node-addon-api/-/node-addon-api-8.9.2.tgz",
+      "integrity": "sha512-VijLXbi3UACN69I0JVXJsX4tjACjNoQDgv2gTF6sx2wWEi8tkSg2eX8p5gSIFi8z2+DL3oHmY6OyKce38SDolg=="
     },
     "node_modules/object-assign": {
       "version": "4.1.1",

@@ -25,10 +25,44 @@
     "start:app": "gjsify run dist/troedler-app.gjs.mjs",
     "dev": "gjsify run build:gjs && gjsify run start",
     "dev:app": "gjsify run build:app && gjsify run start:app",
+    "build:node": "gjsify build src/index.ts --app node --outfile dist/troedler.node.mjs",
     "test": "gjsify test",
     "test:mcp": "node tests/integration/mcp-gjs-smoke.mjs"
   },
   "gjsify": {
+    "ship": {
+      "appId": "eu.jumplink.troedler",
+      "binaryName": "troedler",
+      "kind": "cli",
+      "name": "Trödler",
+      "bundle": {
+        "linux": "dist/troedler.gjs.mjs",
+        "darwin": "dist/troedler.node.mjs",
+        "win32": "dist/troedler.node.mjs"
+      },
+      "app": {
+        "darwin": "node",
+        "win32": "node"
+      },
+      "developer": {
+        "id": "eu.jumplink",
+        "name": "Pascal Garber",
+        "email": "pascal@jumplink.eu"
+      },
+      "summary": "Search several second-hand marketplaces from one query, locally",
+      "license": {
+        "project": "AGPL-3.0-or-later"
+      },
+      "description": "troedler searches eBay, classified-ad sites, public-authority auctions and collector marketplaces with one query, as a CLI and an MCP server. Local, per user, never a hosted crawler — robots.txt is enforced as a gate, not a hint, and every source that is reachable without a login ships off until switched on by the person running it.",
+      "homepageUrl": "https://github.com/JumpLink/troedler",
+      "bugtrackerUrl": "https://github.com/JumpLink/troedler/issues",
+      "vcsBrowserUrl": "https://github.com/JumpLink/troedler",
+      "flatpak": {
+        "finishArgs": [
+          "--share=network"
+        ]
+      }
+    },
     "excludeGlobals": [
       "document",
       "navigator",
@@ -53,6 +87,7 @@
     }
   },
   "dependencies": {
+    "@gjsify/node-gi": "0.54.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@troedler/booklooker": "*",
     "@troedler/compliance": "*",
@@ -68,6 +103,11 @@
     "dotenv": "^17.4.2",
     "yargs": "^18.1.0",
     "zod": "^4.4.3"
+  },
+  "optionalDependencies": {
+    "@gjsify/node-runtime-darwin-arm64": "0.54.0",
+    "@gjsify/node-runtime-darwin-x64": "0.54.0",
+    "@gjsify/node-runtime-win32-x64": "0.54.0"
   },
   "devDependencies": {
     "@gjsify/adwaita-app": "0.54.0",
