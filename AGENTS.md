@@ -5,6 +5,9 @@ Operating guide for AI agents in the **troedler** repo. Follows the
 a submodule of **werkstatt**, whose [AGENTS.md](../../AGENTS.md) carries the broader workspace
 rules — this file is the troedler-specific layer and wins where they differ.
 
+**This file is a router.** What an agent needs before it opens anything stays here; everything else
+lives one hop away in [docs/](docs/README.md) and is linked at the point where it matters.
+
 ## What this is
 
 Search several second-hand marketplaces with one query, as a CLI and an MCP server. A TypeScript
@@ -17,139 +20,56 @@ messaging. It reads what is public and tells you what it found.
 
 ## Leitplanken (hard rules)
 
-These are not style. Each one is the reason some part of the code looks the way it does, and
-removing one silently changes what this project *is*.
+Not style. Each one is the reason some part of the code looks the way it does, and removing one
+silently changes what this project **is**. Full text, the case law and the incidents behind them:
+[docs/leitplanken.md](docs/leitplanken.md).
 
-|**Local, per user, never central.** No hosted crawler, no shared index, no server endpoint, no
-pooling of other people's searches. That is the line between local multi-marketplace software
-(BGH I ZR 159/10, permitted) and a hosted meta-search engine (CJEU C-202/12 *Innoweb*,
-prohibited). It is why the MCP server speaks stdio and there is no HTTP transport.
-|**An official API beats HTML, always.** Where a marketplace offers one, the HTML path is not
-implemented at all — not as a fallback, not "for later".
-|**robots.txt is a gate, not a hint.** Parsed per host, cached, checked before every request in
-`@troedler/http`. Crawl-delay honoured, otherwise ≥2 s and one connection per host. Never build a
-URL the gate would refuse: a disallowed filter path is not a feature that unfortunately blocks, it
-is the thing the operator forbade.
-|**Never logged in.** No cookie jar, no session handling, no account. Without registration there
-is no contract of use to breach; with a login, every clause applies.
-|**Never circumvent.** No browser user-agent spoofing, no captcha/Cloudflare/Akamai/TLS-fingerprint
-bypass, no proxy rotation, no retry with altered headers. **403 and 429 end the attempt with a
-plain-language error.** A refusal is a decision, not a hiccup.
-|**Never reverse-engineered credentials.** No tokens or keys extracted from apps or binaries, no
-private endpoints behind auth. This is the one line here with criminal exposure (§ 202a StGB,
-Modern-Solution line of cases through BVerfG 2025) and it is not close to the edge.
-|**Cache is query-scoped TTL, never a mirror.** Only queries a user actually made. No paging
-through a catalogue, no building a local picture of a market. eBay listing data: ≤6 h by licence.
-|**Personal data is filtered while parsing, not cleaned up later.** No seller names or ids, no
-profiles, no histories; phone numbers and e-mail addresses stripped from free text at the parser.
-|**Images are fetched to be SHOWN, and never kept.** This rule was the opposite until 2026-09-06
-— „images are URLs, never downloaded" — and it was changed deliberately, because a window that
-lists second-hand goods without their photographs is not usable for the thing it is for. What
-replaced it is narrower than a browser and not a loophole: the fetch runs through the SAME gate
-(`HttpClient.image`), so an opt-out host, a switched-off source and a `Disallow:` on the image
-path refuse there exactly as they do for a search; the operator's `Crawl-delay` is honoured and
-only OUR politeness floor is dropped, because a thumbnail beside a row somebody is already reading
-is not a crawl; the bytes go to a widget and are **never written to disk, never rehosted, never
-redistributed**; a response that is not an image is a refusal rather than something to pass on.
-`packages/http/src/client.ts` carries the reasoning, `app/tests/unit/compliance/image.test.ts`
-the measurement — including the discriminator that a plain `get` on the same host still waits the
-floor, so the exemption is about the KIND of request and not about the host.
-|**Honest user agent**, `troedler/<version> (+repo-url)`, with a reachable contact. No spoofing.
-It is also how an operator who objects can reach us at all.
-|**`OPT_OUT_HOSTS` in `@troedler/compliance` is binding.** A host that objects is refused by the
-gate and removed in the next release.
-|**A new source means a source record first.** `docs/quellen/<host>.md` — robots.txt findings,
-the terms clause quoted, whether an API exists, bot protection, date checked — then an entry in
-`SOURCES`, then the adapter. No adapter without one.
-|**Fixtures are synthetic.** Never commit a real listing, page capture, or database. Measure
-against live pages locally; commit only HTML you wrote yourself.
+| Rule | The line it draws |
+|---|---|
+| **Local, per user, never central** | No hosted crawler, no shared index, no HTTP transport — the line between permitted local software and a prohibited hosted meta-search engine (BGH I ZR 159/10 vs. CJEU C-202/12 *Innoweb*) |
+| **An official API beats HTML, always** | Where a marketplace offers one, the HTML path is not implemented at all — not as a fallback, not "for later" |
+| **robots.txt is a gate, not a hint** | Parsed per host, cached, checked before every request; never build a URL the gate would refuse |
+| **Never logged in** | No cookie jar, no session, no account — without registration there is no contract of use to breach |
+| **Never circumvent** | No UA spoofing, no captcha/bot/TLS-fingerprint bypass, no proxy rotation. **403 and 429 end the attempt** — a refusal is a decision, not a hiccup |
+| **Never reverse-engineered credentials** | No tokens from apps or binaries, no private endpoints. The one line here with criminal exposure (§ 202a StGB) |
+| **Cache is query-scoped TTL, never a mirror** | Only queries a user actually made; no paging a catalogue, no local picture of a market |
+| **Personal data is filtered while parsing** | No seller names, profiles or histories; phone and e-mail stripped at the parser, not cleaned up later |
+| **Images are fetched to be SHOWN, never kept** | Bytes go to a widget — never to disk, never rehosted, never redistributed. This rule was the OPPOSITE until 2026-09-06; [why it changed](docs/leitplanken.md) |
+| **Honest user agent** | `troedler/<version> (+repo-url)` with a reachable contact. It is also how an operator who objects can reach us |
+| **`OPT_OUT_HOSTS` is binding** | A host that objects is refused by the gate and removed in the next release |
+| **A new source means a source record first** | `docs/quellen/<host>.md` — then `SOURCES`, then the adapter. No adapter without one |
+| **Fixtures are synthetic** | Never commit a real listing, page capture or database. Measure against live pages locally |
 
-Sources whose terms forbid automated access ship **off**. They are still OFFERED — this project
-does not decide for anybody what they may fetch from their own machine — but `providers enable`
-prints the operator's clause in full and refuses without `--acknowledge`, and the date lands in the
-config.
-
-That split is the point and must not be "simplified" away in either direction. **The request
-violates the terms, not the program**: troedler is non-commercial, runs locally, and never fetches
-such a source on its own initiative, so a user switching one on does it in their own name and
-carries it. Removing the refusal would make the project ship the decision as a default; removing
-the source would make it decide for the user instead. Neither is ours to do.
-
-No permission is sought from any operator, and none is implied. What the project offers instead is
-accuracy: the clause quoted, robots.txt still enforced even where the terms are not, the pace kept,
-and an agent string that says what it is.
-
-## Package layout — and the rule that holds it together
-
-| Package | Contains | May import |
-|---|---|---|
-| `@troedler/core` | **Pure, zero deps.** `Listing`, `SearchQuery`, the `MarketProvider` port and its capability object, normalisation, post-filtering, dedup, grouping, ranking, price statistics, the fan-out | nothing |
-| `@troedler/compliance` | **Pure.** robots.txt parser and matcher, the gate, the source register, the opt-out list | `core` |
-| `@troedler/http` | The honest UA, per-host rate limiter, robots loader, gate-checked fetch | `core`, `compliance` |
-| `@troedler/html` | The only façade over HTML parsing and CSS selectors | nothing |
-| `@troedler/<marketplace>` | One `MarketProvider` each | `core`, `http`, `compliance`, `html` |
-| `@troedler/store` | SQLite, XDG paths, config manifest, saved searches, seen index, price history | `core`, `node:*` |
-| `troedler-cli` (`app/`) | yargs CLI, MCP server, the Adwaita app. Injects the providers | all of the above |
-
-**`store` must never import a provider package, and `core` must import nothing.** The fan-out runs
-through the `MarketProvider` port, injected by `app`. That is the only reason the parts with
-judgement in them — merge, dedup, ranking, post-filtering, new-versus-seen — are unit-testable on
-Node against fake providers and `:memory:`, with no network and no GJS. Wanting to import an
-adapter from the kernel means a method is missing on the port.
-
-**Parsing is pure.** Every adapter keeps `parse.ts` free of `fetch`; I/O lives in `request.ts`.
-That split is what lets the parsers be tested against fixture HTML without a socket.
+Sources whose terms forbid automated access ship **off** — still offered, refused without
+`--acknowledge`, with the operator's clause printed in full. **The request violates the terms, not the
+program**, and that split must not be "simplified" away in either direction.
 
 ## The failure mode this project is built against
 
 **Green, and it checked nothing.** A marketplace that changed its markup, refused us, or was never
-configured all look identical to "no matches" — and "no matches" is an answer people act on. So:
+configured all look identical to "no matches" — and "no matches" is an answer people act on. The
+mechanisms, the measurements and the incidents behind them:
+[docs/gruen-und-nichts-geprueft.md](docs/gruen-und-nichts-geprueft.md).
 
-- `ProviderReport.outcome` is `ok | empty | skipped | failed`, never a row count.
-- An adapter that got a page but matched **zero** elements with its selectors throws
-  `parse-failed`; it does not return an empty list.
-- `openDatabase` writes and reads back a canary row, because gjsify's `node:sqlite` **swallows
-  exceptions in `all()`/`get()`** and would otherwise report an empty watchlist forever.
-- `searchAll` reports `noSourceAnswered` separately, and the CLI says so in words.
+- `ProviderReport.outcome` is `ok | empty | skipped | failed`, **never a row count**.
+- An adapter that got a page and matched **zero** elements throws `parse-failed`; it does not return
+  an empty list.
 - Every test needs a discriminator: would it still pass if the parser returned nothing?
-- `scripts/guard-unused-kernel.mjs` fails CI when an exported `@troedler/core` function is
-  unreachable from production. No test can cover this: a test proves a function WORKS, never that
-  anything USES it — and the cross-source grouping this project exists for sat dead behind two
-  green tests until a live check asked who called it.
-- A pass that spends requests must report what it spent AND what it left out. The barcode
-  cross-check under `--compare` first shipped adding 13 rows for 12 requests and changing nothing:
-  eBay answers `item_summary/search?gtin=` with matching items whose summaries carry no product
-  code, so every added row fell back to the title-and-price identity and grouped with nothing. The
-  counters looked like work. `docs/quellen/ebay.de.md` § 7a has the measurement.
+- A pass that spends requests must report **what it spent AND what it left out**.
+- `scripts/guard-unused-kernel.mjs` fails CI when an exported `@troedler/core` function is unreachable
+  from production — a test proves a function WORKS, never that anything USES it.
 
-`--explain` belongs to the same idea. Where a source cannot push a filter down, the kernel applies
-it to the rows that came back — a materially weaker guarantee, and the user has to be able to see
-that they got it. It has to be complete about it, too: a filter the kernel applied but did not
-name, or one it named that could not remove a row on this source, is the same failure wearing a
-report.
+## Package layout
 
-## Check against the source, not against your own fixture
+Seven packages; the full table with what each may import:
+[docs/architektur.md](docs/architektur.md). The invariant that holds it together:
 
-Every adapter here was once green against fixtures its own author had written, and a live check
-found something wrong in **all four** running sources. Not one number was copied incorrectly — the
-defects were all in a response shape that had been *inferred* and then pinned by a fixture built
-from the same guess. Zoll-Auktion's `Versand:` row was documented as `Ja`/`Nein` in the DTO, in the
-source record and in the fixture; the page prints `Nein` or `Deutschland (10,00 EUR)`, so the
-adapter reported every shipping lot as collection-only and its own tests held that in place.
-
-So: a claim about what a page or an API returns is worth what its measurement is worth. Write the
-date and the sample into the source record (`docs/quellen/<host>.md`), and when a claim turns out
-to be inference, **mark it as inference rather than deleting it** — the trail is what stops the
-next person re-deriving the same guess.
+**`store` must never import a provider package, and `core` must import nothing.** The fan-out runs
+through the `MarketProvider` port, injected by `app`. Wanting to import an adapter from the kernel
+means a method is missing on the port. **Parsing is pure** — every adapter keeps `parse.ts` free of
+`fetch`; I/O lives in `request.ts`.
 
 ## Run / build / test
-
-- Deps: **`gjsify install`** — never `npm install`, it prunes the gjsify deps. Node 24 to
-  bootstrap (gjsify's install-backend prebuilds target 24; Fedora's 22 segfaults).
-- All six `@gjsify/*` packages are pinned to the **same exact version**. gjsify ships as one
-  release train and a CLI ↔ libs skew produces silently broken bundles. Bump them together.
-- `typescript` is pinned `^6.0.3`, **not** 7: `gjsify tsc` runs a bundle with TypeScript 6.0.3
-  baked in, so a local 7 would give a different diagnostic set than CI.
 
 ```bash
 gjsify foreach -A check                     # type-check everything (-A includes private workspaces)
@@ -159,291 +79,49 @@ gjsify workspace troedler-cli test          # @gjsify/unit, on gjs AND node
 gjsify run app/dist/troedler.gjs.mjs check
 ```
 
-The `-A` is load-bearing: without it every `packages/*` is skipped and the check silently covers
-only the app. Tests run on **both** runtimes — a change that makes the Node run impossible is in
-the wrong file.
+Deps with **`gjsify install`**, never `npm install` — it prunes the gjsify deps. All six
+`@gjsify/*` packages stay pinned to the **same exact version**; they ship as one release train. The
+`-A` is load-bearing: without it every `packages/*` is skipped and the check silently covers only the
+app. Tests run on **both** runtimes.
 
-A long-running FOREGROUND GJS process is killed by the werkstatt sandbox (Exit 144). Launch the
-MCP server or the GUI via **run_in_background**, fully detached
-(`(setsid env … npx gjsify run … >log 2>&1 </dev/null &)`).
-
-Kill it by PID, and find that PID by reading `/proc/<pid>/cmdline`:
-
-```bash
-for p in $(pgrep -x gjs); do tr '\0' ' ' < /proc/$p/cmdline | grep -q troedler && kill $p; done
-```
-
-Neither shortcut works. `pkill -f troedler-app` matches the launching shell and kills that
-instead. And `pkill -x gjs` is worse than it looks: on a werkstatt workstation that command
-matched 52 processes — `org.gnome.Shell.Notifications`, `org.gnome.ScreenSaver`, the postbote and
-buchhaltung MCP servers, and the map-editor's signalling server. It kills the desktop to close one
-window.
+Two ways this workstation will kill the desktop, and the full procedure for backgrounding a GJS
+process: [docs/development.md](docs/development.md). Short version: `pkill -x gjs` is **not** a way
+to stop one app, and a long-running FOREGROUND GJS process is killed by the sandbox (Exit 144).
 
 ## The three surfaces, and the seam under them
 
 CLI, MCP server and the **native GNOME app** are three renderings of the same actions in
-`app/src/core/actions/`. Three rules keep them from drifting, and each has an incident behind it:
+`app/src/core/actions/`. Three rules keep them from drifting, and each has an incident behind it —
+[docs/architektur.md](docs/architektur.md#the-three-surfaces-and-the-seam-under-them):
 
-- **Every sentence a person could quote comes from `@troedler/core`'s `present.ts`.** A view
-  decides ANSI codes, column widths and Pango classes — nothing else. Before the extraction the
-  provider tri-state already said „an" in one view and „bereit" in another, and „ inkl. Versand"
-  stood three times in one file.
+- **Every sentence a person could quote comes from `@troedler/core`'s `present.ts`.** A view decides
+  ANSI codes, column widths and Pango classes — nothing else.
 - **The GUI is its OWN bundle** (`dist/troedler-app.gjs.mjs`), because `import Adw` becomes a
-  top-level `gi://Adw`: folding it into the CLI would make every `troedler search` in a terminal
-  load GTK and fail without a display. Measured after the split — `gi://Adw|gi://Gtk` appears 0×
-  in the CLI bundle and 1× in the app bundle.
+  top-level `gi://Adw`.
 - **A view never lets a core sentence be parsed.** `Adw.PreferencesRow` takes title and subtitle as
-  Pango markup by DEFAULT, so `new Adw.ActionRow({ subtitle })` runs a German sentence through an
-  XML parser. Justiz-Auktion's ends in `<Auktions-ID>`; Pango refused the whole string and the row
-  rendered EMPTY — the one explanation somebody opened that expander to read, with only a
-  Gtk-WARNING on a stderr nobody reads. Pass `useMarkup: false` in the CONSTRUCTOR: the parse
-  happens on assignment, so a later `set_use_markup(false)` is too late (measured — the warning
-  survived it). The same trap is waiting on any row that would carry a listing title, which is
-  text other people wrote.
+  Pango markup **by default**, so `new Adw.ActionRow({ subtitle })` runs a German sentence through an
+  XML parser. Pass `useMarkup: false` in the **constructor** — the parse happens on assignment.
 
-**Two layouts, one invariant.** The results area is either a price-sorted grid of cards over every
-source or a block per source, chosen in the settings (`config.ui.layout`, GUI-only — the CLI has
-one layout and always groups). What is NOT switchable is the accounting: the grid carries a
-`SourceCensus` with the same five report states, laid out before the fan-out just as the panels are.
-A layout may change how offers are grouped; it may not change whether a skipped source is visible.
-Switching re-lays the results already held rather than searching again — a preference is not a
-reason to spend somebody's rate limit twice.
-
-Two traps this cost, both measured: `validate()` in `config.ts` REBUILDS the config object, so the
-new `ui` section was dropped on every load and the whole setting was inert while the type check,
-the lint and the build stayed green (`config.test.ts` now round-trips it). And `Gtk.Picture` reports
-its paintable's INTRINSIC width as its natural width, which in a homogeneous `Gtk.FlowBox` makes one
-1600 px photograph set the width of every card — two columns where four fit. `Adw.Clamp` is the only
-thing in this toolkit that caps a natural width; `max-width-chars` on a label that also ellipsizes
-does not.
-
-The app entry point starts with `import 'dotenv/config'` for the same reason the CLI's does.
-Leaving it out was a real defect: `troedler check` reported Booklooker „bereit" while the window
-beside it said „Kein BOOKLOOKER_API_KEY gesetzt" — same machine, same `.env`.
-
-**A `Gtk.Box` row has no floor, and the search entry paid for it.** It was reported as „the entry
-shows an x": under `TR_APP_QUERY=fahrrad` the results are bicycles, but the entry renders as `⊗`.
-Not a wrong query — the entry held the full string the whole time, and what a person sees is the
-clear glyph with the text squeezed out of the allocation. The cause is that a horizontal `Gtk.Box`
-gives every child its natural width and hands the surplus to the only `hexpand` one, so once the
-window is narrower than the other five controls need together, the entry absorbs the ENTIRE deficit
-and GTK answers by overflowing the row.
-
-The first fix was a floor plus a stack, and the stack is what made it temporary. The other five controls
-asked for 509 px between them (price 150, dropdown 139, check 82, buttons 55 + 43, plus 40 spacing and
-24 margins), so below ~663 px there is no width for a readable entry and for them at once: a
-`width-chars: 12` floor kept the horizontal band above that readable, and an `Adw.Breakpoint` at
-700 px stacked the bar below it. That fixed the width and spent the height — six rows of controls, a
-full-width „Suchen", a full-width „Stopp" and then the per-source block, which at 600 px is nearly
-the whole window with no results on it.
-
-**What is there now removes the arithmetic instead of working around it.** The three secondary filters
-(Höchstpreis, Anbieter, Erklären) live in one `Gtk.MenuButton` popover as `Adw.SpinRow` /
-`Adw.ComboRow` / `Adw.SwitchRow`; what is left in the toolbar is the entry, a 34 px filter button and
-one run button that becomes „Stopp" while the search runs — 156 px beside the entry against the 509 px
-before. The breakpoint is GONE, and a `Gtk.Box` row that asks for 156 px does not need one. The entry
-therefore keeps its floor everywhere instead of only above a boundary, and the `Adw.Clamp` around the
-row is what stops a 4K window from stretching the entry to a mile.
-
-The collapsed source block is the other half. `SourceStrip` printed one wrapped line per source,
-always; `SourceCensus` collapses it to `sourceCensus()`'s one line and keeps the lines behind a
-toggle. **The line NAMES every source that did not answer and never counts it** — a count would let a
-skipped eBay pass for a market with nothing on it, which is the reading the whole block exists to
-prevent. A failure expands the block by itself (`expand`); a skip does not, because it is an operator's
-decision or a missing key and is named in the line instead. Both sentences live in `@troedler/core`,
-so the widget decides geometry and nothing else.
-
-Measured through the devtools plane rather than by eye, stepping the window down. GTK4 has no
-GObject `width` (`GetProperty` answers not-found), so the number is the widget's OWN PNG:
-`Screenshot` takes a widget path and the IHDR of the result is the allocated width. 2026-10-01,
-`TR_APP_QUERY=trekkingrad`, toolbar rebuilt as described — and the allocation does not depend on the
-query, `fahrrad` measured the same 34 px-tall row the same day:
-
-| window | entry on `main` | text on `main` | entry now | text now | toolbar row |
-|---:|---:|---:|---:|---:|---:|
-| 980 px | 349 px | 305 px | **550 px** | **506 px** | 689×34, one row |
-| 600 px | **57 px** | **13 px** | **418 px** | **374 px** | 557×34, one row |
-| 360 px | 57 px | 13 px | **197 px** | **153 px** | 336×34, one row |
-
-The toolbar row is 34 px tall at every width: it does not stack, and at 360 px the entry still holds
-the whole query. (550/418/197, not the 589/457/236 measured hours earlier with an icon on the run button:
-a `Gtk.Button` that has BOTH `label` and `icon-name` draws the icon and drops the label — see below.)
-
-The popover measures 354 px wide, so it fits a 360 px window with 6 px to spare, which is why its three
-subtitles are one short line each — an `Adw.ActionRow` does not wrap its subtitle in this libadwaita,
-so a longer one measured 388 px and a popover wider than its own window. (An earlier draft with full
-sentences measured 587 px over a 600 px window.)
-
-**The properties that have to survive in `search-view.blp` are `width-chars: 12` and
-`hexpand: true` on the `Gtk.SearchEntry`.** A `Gtk.SearchEntry` written into a template without them
-brings the 57 px back, and no test here would notice — which is the whole reason these numbers are
-written down. `searchView.bar` is no longer public: nothing outside the view needs it, because there
-is no breakpoint driving it.
-
-**The toolbar IS a Blueprint template now**, and that is the one thing this file used to leave open.
-It used to say the defect was *deliberately NOT fixed on this branch* and left the before-picture for
-whoever took it — which was the right call while the branch only MOVED the widget and the fix belonged
-on `main`. It is not the right call now: `main` carries the rebuilt toolbar and the branch carries the
-same design as `search-view.blp`, so the two facts have to be told once, together. The template keeps
-`width-chars: 12`, `hexpand: true`, `troedler-filter-symbolic` and a `go_button` with a label and no
-`icon-name`, and the popover is a second template (`search-view-popover.blp`) because a `Gtk.Popover` is
-not a child of the view — the button owns it and shows it over the results.
-
-**An icon name is not a string, it is a dependency on somebody else's package.** The filter button asked
-for `view-filter-symbolic`, and **no version of Adwaita has it** — there is no funnel in the theme at
-all. It type-checked, compiled, ran, and rendered as an EMPTY WHITE RECTANGLE, because a missing
-`-symbolic` on a `Gtk.MenuButton` is not the `image-missing` placeholder a `Gtk.Image` draws. So the
-Adwaita apps that need a funnel bundle one, and this does too: an original 16×16 symbolic in
-`app/src/frontends/gui/resources/`, compiled into a GResource by `scripts/build-icon-resource.mjs` and
-carried **inside the bundle** as base64 — the bundle is the artefact, and a `.gresource` beside it is a
-second thing to install and a second thing to lose silently. `MainWindow` registers it first thing.
-
-`scripts/guard-icon-names.mjs` is the part that matters, and it is in CI: it asks whether **each icon
-name the GUI uses resolves in the theme this machine has**, which is a question no type system can ask,
-and it proves the generated resource still matches its SVG by SHA-256, so an icon edited without
-regenerating fails a build that needs nothing but Node. Both halves were measured by putting the old
-name back: red, then green. It strips comments before it greps — a guard that reads its own documentation
-as a usage fails for ever, the same trap `guard-unused-kernel.mjs` records for the English word „until".
-
-**A screenshot is still the only thing that sees what a widget actually drew.** Three defects on this
-toolbar survived a green type check, a green lint, a green build and 1487 green tests: a white rectangle
-where an icon belongs, a three-dot menu where a disclosure arrow belongs, and a run button that drew a
-magnifier while it was ABORTING the search. Each was found by looking at a PNG of the running app, and
-each is now behind something that can fail without one.
-
-**The fourth one was the Blueprint migration, and it is behind `guard-template-types.mjs`.** A `.blp`
-template's `$Name` and the `GTypeName` registering it are ONE string, and they were two: the popover's
-template said `$TroedlerSearchPopover`, its class said `GTypeName: 'TroedlerFilterPopover'`. GJS refuses
-to build a template whose type does not match the one registering it, `super()` throws, and the window
-comes up with **no search view in it at all** — an empty frame where the whole app is. The base class has
-to match too (`Gtk.Box` declared, `Adw.Bin` extended) and that is the same failure. It passed everything
-first, including CI, for the same reason the other three did. The guard asks the question TypeScript
-cannot — one string, two files — and needs nothing but Node. Measured by putting the wrong name back:
-red, then green.
-
-**Driving it as an agent.** `GJSIFY_DEVTOOLS=1` exports `org.gjsify.Devtools` at
-`/eu/jumplink/Troedler/devtools`; `Screenshot`, `DumpTree`, `FindWidget` and `ActivateWidget` work
-over `gdbus`. `ResizeWindow(w, h)` and `GetProperty(path, prop)` are the two that answer geometry and
-layout questions. The devtools plane cannot type into an entry — `SendKey` takes accelerators — so
-**`TR_APP_QUERY=<begriff>` runs a search at startup**, `TR_APP_VIEW=suche|quellen` opens a
-view, and `TR_APP_LAYOUT=grid|sections` switches the layout AFTER the query through the same
-`setLayout` the settings dialog calls. That last one exists because the devtools plane cannot
-operate an `Adw.ComboRow` at all — `ActivateWidget` on its list row reports `true` and changes no
-selection, `SendKey` answers `false` — so the live switch would otherwise be the one path here
-that can only be checked by reading it. Without the query hook the only screenshottable state of the search view is the empty one,
-and every state worth checking is on the other side of a query.
+GUI layout, the measured window/allocation tables, the icon-resource trap and the four guards that
+now catch what a screenshot used to: [docs/gui.md](docs/gui.md).
 
 ## Fix gjsify gaps at the core
 
-gjsify is a first-party dependency, not vendored third-party code. A missing capability gets fixed
-in the `gjsify/gjsify` submodule with a test, and troedler picks it up on a version bump.
-
-**Three gaps went this way and all three are closed — the last two at gjsify 0.52.0.** They stay
-written down because they are what the rule is for, and because every one bit on GJS while Node
-stayed green:
-
-- **`URL` was immutable.** Every setter threw, and `url.searchParams` handed back a DETACHED copy
-  whose `set`/`append`/`delete` reported success and were discarded. Discogs' `/database/search`
-  therefore went out with no query at all and answered with 34.7 million rows of everything.
-  PR #1245 (0.42.0) fixed `searchParams` and the `search` setter — **and only those**, which is the
-  part worth remembering: at the 0.47.0 bump a 21-check probe still printed all nine other setters
-  as `setting getter-only property`. #1678 (0.52.0) fixed the nine; re-measured on 0.52.0, all ten
-  are green, so `scripts/guard-url-setters.mjs` was deleted WHOLE. Its predecessor had been deleted
-  the same way at 0.42.0 — on a PARTIAL fix, which is how the remaining nine spent five releases
-  unguarded. **Delete a guard when the measurement has no red line left, not when one line turned.**
-- **`@gjsify/domparser` was an XML parser.** No HTML5 tree construction, no entity decoding, and
-  `querySelectorAll` matched tag names only — on a real 329 KB results page, `.aditem` → 0 hits.
-  `@troedler/html` wrapped three npm parsers until PR #1250 landed an HTML5 tokenizer, a tree
-  builder and a CSS Selectors 4 engine. The façade is narrow precisely so that swap was one file.
-- **`node:sqlite` swallowed every SQL error.** `all()` and `get()` caught and returned `[]` /
-  `undefined`, so a query against a column that does not exist reported "nothing found" forever.
-  #1674 (0.52.0) lets a rejected query raise; #1756 made `undefined` bind NULL like Node 26.10.
-  The canary in `packages/store/src/db.ts` STAYS — it cost three statements at open, and a read
-  path that quietly returns nothing was never only about swallowed exceptions. Three MORE libgda
-  gaps closed at 0.53.0 and this store sits on two of them (#1841, #1893 — measured below).
-
-Unavoidable shims carry **one of two markers, and they mean opposite things at bump time**:
+gjsify is a first-party dependency, not vendored third-party code. A missing capability gets fixed in
+the `gjsify/gjsify` submodule with a test, and troedler picks it up on a version bump. Unavoidable
+shims carry **one of two markers, and they mean opposite things at bump time**:
 
 - `// fixed upstream in gjsify: …` — the fix LANDED. Delete the shim at the next bump.
 - `// gjsify gap (unfixed, <PR>): …` — no upstream fix yet. The shim is **load-bearing**.
 
-**Neither marker is a substitute for measuring.** A bump re-measures the behaviour and believes the
-result, not the note — and the measurement has to be able to FAIL. For the URL fix that meant
-running the same 13-check probe against 0.41.0 (6 red) and 0.42.0 (all green); for the parser swap
-it meant running both parsers over the same live pages and diffing what the adapters made of them
-(byte-identical over 10 auction cards, one full detail page and 20 classified ads).
-
-A probe that only covers what the release note mentions measures the note. The 0.42.0 → 0.47.0 bump
-was checked with a 25-check capability probe built and run under gjs on BOTH versions; output was
-byte-identical, 22 green and 3 red on each. No regression, and the three reds are two open gaps
-nobody had written down (the URL setters above, and `all()` / `get()` still swallowing SQL errors —
-see the marker in `packages/store/src/db.ts`).
-
-**0.47.0 → 0.52.0, same method, opposite outcome.** The 21-check probe on both versions, and this
-time the diff IS the result: **14 red of 21 on 0.47.0, 0 red on 0.52.0** — the nine setters,
-`all()`/`get()` raising (missing table, missing column), `undefined` binding NULL. Also the honest
-reading of the gap markers: both had said "unfixed", and both were true until the release that
-carried the fix. The HTML5 parser checks were covered by the adapters' own suites, on gjs AND node.
-
-**0.52.0 → 0.53.0: the probe became a committed file, because a probe that lives only in a
-conversation cannot be re-run by the next person.** `scripts/probe-gjsify-0.53.mjs` holds it, and
-it gates CI on both runtimes. Measured, same method:
-
-| gjs | result |
-|---|---|
-| 0.52.0 | 21 green, **3 red** |
-| 0.53.0 | **24 green**, 0 red |
-
-The three that turned are the parts of `node:sqlite` this store actually leans on. **#1841** read
-an INTEGER above 2^31 as "Ganzzahlwert ist zu groß" — an outright refusal — and `price_minor` is
-an INTEGER column, so a five-figure bike price was the shape that would have hit it; timestamps are
-TEXT and were never affected, which is why the mistake was available to make. **#1893** made an
-`EXISTS` subquery parse at all. Neither is a shim in this repo and neither needed code here: the
-point is that the probe found them, which a release-note reading would not have.
-
-The probe also earns its place by catching **its own** wrong assumption. `undefined` binding NULL
-was asserted as a cross-runtime equality and came back red on Node — because node 24, the version
-that bootstraps this toolchain, REFUSES it while gjsify binds NULL like Node 26.10. Since no
-statement in `packages/store` binds `undefined` (every nullable column is bound as a literal
-`null`), that check now asserts what the code does and prints the difference as a note instead of
-pretending the two runtimes agree.
-
-**What did NOT change, and why the markers stay.** Not one shim in this repo had its fix in
-0.53.0, so none was deleted — and the reason each stays is its own, not affection:
-
-- The canary in `packages/store/src/db.ts`. The gap closed at 0.52.0; the check outlived it
-  because swallowed exceptions were never the only way a write goes in and a read comes back
-  empty.
-- The composed-URL shapes in `packages/markt/src/shared.ts` and
-  `packages/discogs/src/request.ts`. Mutation works and always did after 0.52.0; the shape says
-  what it builds instead of subtracting from something else.
-- `btoa` over GLib's base64 in `packages/ebay` — still polyfilled by `@gjsify/node-globals`
-  0.53.0, confirmed by reading the shipped `register/encoding.js`, not by remembering 0.52.0.
-- The 404-message sniffs in `packages/auktion/src/justiz.ts` and `packages/ebay/src/provider.ts`.
-  Not gjsify gaps at all: the fix belongs in `@troedler/core` / `@troedler/http`, which should
-  carry the HTTP status on the error.
-
-Watch for spec differences the old library papered over. The one that bit: `tagName` is UPPERCASE
-in the DOM and was lowercase in `domhandler`, so `node.tagName === 'dt'` silently stopped matching
-and a whole `<dl>` came back empty. Prefer `localName`.
-
-`app/src/frontends/mcp/runtime.ts` was a **verbatim copy** of postbote's, which carried it as an
-extraction candidate for `@gjsify/mcp`. At 0.54.0 it IS that package: gate, stdio lifecycle and
-uniform tool result moved upstream, `runtime.ts` and `types.ts` are gone, and nothing was
-re-implemented on the way in — same helpers, same signatures, so no client surface moved.
-**The tests do NOT move with it** — `gate.test.ts` imports the gate from `@gjsify/mcp` and still
-pins the fail-closed direction, because an upstream flip would otherwise surface only as a
-mutating tool in `tools/list`; `npm run test:mcp` asserts the same on the wire.
-
-`build:app` writes a `<name>.d.blp.ts` beside every `.blp` (ADR 0088 § 4) and those are
-COMMITTED, so the drift gate reads a real artifact; `.oxfmtrc.json` excludes them, because a
-formatter that rewrote a file two producers already write would make `blueprint types --check`
-unsatisfiable.
+**Neither marker is a substitute for measuring** — a bump re-measures and believes the result, not the
+note. Gap history, the capability probes and the tables they produced:
+[docs/gjsify.md](docs/gjsify.md).
 
 ## Conventions
 
-- Conventional commits (`feat(ebay): …`, `fix(store): …`), imperative, subject ≤ 50 chars.
-  Run `gjsify foreach -A check` and the tests before committing. No `--no-verify`.
+- Conventional commits (`feat(ebay): …`, `fix(store): …`), imperative, subject ≤ 50 chars. Run
+  `gjsify foreach -A check` and the tests before committing. No `--no-verify`.
 - **No TypeScript parameter properties** (`constructor(private x: T)`). Node's
   `--experimental-strip-types` rejects them, which silently breaks the Node test run.
 - User-facing strings are German; code comments and docs are English. Comments explain **why**.
