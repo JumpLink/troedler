@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A funnel, drawn for this app. 16×16, one filled path, the symbolic style the
+  GNOME HIG specifies for UI icons: a single property (narrowing a list),
+  aligned to the pixel grid, and it must read the same way inverted — which is
+  why it is a silhouette and not an outline.
+
+  It is an ORIGINAL path, not a copy. The GNOME Icon Dev Kit's `filter-symbolic`
+  is the obvious source and the one this file would credit if it were reachable:
+  the library's raw URL answers 404 from here and the dev kit is not installed on
+  this machine, so the honest options were to draw one or to put a wrong icon on
+  the button (`preferences-other-symbolic` is a person with a wrench,
+  `view-sort-descending-symbolic` is a sort glyph, neither is a filter). Drawn
+  from the HIG's rules instead — https://developer.gnome.org/hig/guidelines/ui-icons.html
+
+  Colours: `#222222` is the fill GNOME's symbolic SVGs ship with. GTK recolours
+  a `-symbolic` icon when it loads it, so this exact value never reaches the
+  screen; it is what the SVG has to be *drawn* in.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <path fill="#222222" d="M 1,2 L 15,2 L 9,9.5 L 9,13.5 L 7,13.5 L 7,9.5 Z"/>
+</svg>

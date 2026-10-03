@@ -9,9 +9,10 @@
  *     `BEGIN … END` body gets chopped in the middle.
  *  2. **No BLOBs.** Parameters that are not strings are rendered as SQL
  *     literals rather than bound.
- *  3. **`all()` and `get()` swallow exceptions** and return `[]` / `undefined`.
- *     A broken query is indistinguishable from "nothing matched" — which is why
- *     `db.ts` wraps every read in a probe rather than trusting the result.
+ *  3. ~~**`all()` and `get()` swallow exceptions**~~ — CLOSED at gjsify 0.52.0
+ *     (#1674): a rejected query raises now, as it does on Node. The canary in
+ *     `db.ts` stays regardless, because a swallowed exception was never the only
+ *     way a write goes in and a read comes back empty.
  *
  * Migrations are additive: `STATEMENTS` is the baseline with `IF NOT EXISTS`
  * throughout, `UPGRADES` carries only what needs an `ALTER`.

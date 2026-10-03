@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Trödler's own icons, as a GResource, so the app never depends on the host
+  icon theme having a name it needs.
+
+  Why this file exists at all: the filter button asked for
+  `view-filter-symbolic`, and the Adwaita theme has no such icon — there is no
+  funnel anywhere in it. A missing `-symbolic` name is not a missing-image
+  placeholder on a `Gtk.MenuButton`, it is a white rectangle, so the button that
+  opens the filters looked like a bug rather than a button. Every GNOME app that
+  needs a funnel bundles one, which is what this is: one icon, and
+  `scripts/guard-icon-names.mjs` fails the build if any icon name the GUI uses
+  stops resolving — this resource or the Adwaita theme.
+-->
+<gresources>
+  <gresource prefix="/eu/jumplink/Troedler/icons">
+    <file>troedler-filter-symbolic.svg</file>
+  </gresource>
+</gresources>

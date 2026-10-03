@@ -1,0 +1,75 @@
+using Gtk 4.0;
+using Adw 1;
+
+// The filter popover's contents: the box it is built at, and the three rows.
+//
+// A separate template because a `Gtk.Popover` is not part of the view's own
+// hierarchy — the filter button owns it and shows it over the results — so
+// naming it in the view's `InternalChildren` would name something that is not a
+// child. The view composes this in TypeScript and hands it to the button.
+//
+// The width here is a FLOOR rather than a cap, and it is measured: the three
+// rows between them ask for 274 px (the price row is the widest — its spin
+// buttons and its title, not its subtitle), and an `Adw` popover adds 80 px of
+// its own padding and frame around that, which lands the popover at 354 px
+// measured. Under a 360 px window, with 6 px to spare — and the margins are 6
+// rather than 12 because the popover already pads itself, so 12 was a second
+// padding on top of the first.
+//
+// The subtitles are short ON PURPOSE, and that is a measurement rather than a
+// taste. An `Adw.ActionRow` does not wrap its subtitle in this libadwaita, so a
+// row asks for the full width of its longest line and the popover takes that as
+// its own width — a popover wider than the window it belongs to, which is what
+// the first version of these three produced: full sentences for subtitles,
+// measured 388 px of popover over a window that is 360 px wide. The unit went
+// into the title for the same reason: `Adw.SpinRow` exposes no suffix of its
+// own, and „Höchstpreis" alone does not say what the number is.
+// The template name and the `GTypeName` in `FilterPopover` are ONE string, and
+// they have to stay one string: GJS refuses to build a template whose declared
+// type does not match the type it is registering, throws out of `super()`, and
+// the search view never finishes constructing — a window with no search view in
+// it. That failure is loud on stderr and silent everywhere else, which is how it
+// reached a green pipeline once already.
+template $TroedlerFilterPopover : Gtk.Box {
+  width-request: 250;
+  margin-top: 6;
+  margin-bottom: 6;
+  margin-start: 6;
+  margin-end: 6;
+
+  Adw.PreferencesGroup {
+    // `use-markup: false` on EVERY row, and it is not decoration:
+    // `PreferencesRow` parses title and subtitle as Pango markup on assignment,
+    // so a German sentence with an `<Auktions-ID>` in it is refused by the XML
+    // parser and the row renders EMPTY — with only a Gtk-WARNING on a stderr
+    // nobody reads. The incident is in AGENTS.md; the parse happens on
+    // assignment, so this cannot be set afterwards (measured).
+    Adw.SpinRow max_price {
+      title: _("Höchstpreis €");
+      subtitle: _("0 = kein Limit");
+      use-markup: false;
+      digits: 0;
+      snap-to-ticks: true;
+      numeric: true;
+
+      adjustment: Gtk.Adjustment {
+        lower: 0;
+        upper: 100000;
+        step-increment: 10;
+        page-increment: 100;
+      };
+    }
+
+    Adw.ComboRow seller {
+      title: _("Anbieter");
+      subtitle: _("privat / gewerblich");
+      use-markup: false;
+    }
+
+    Adw.SwitchRow explain {
+      title: _("Erklären");
+      subtitle: _("welche Filter griffen");
+      use-markup: false;
+    }
+  }
+}

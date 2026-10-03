@@ -1,12 +1,16 @@
+import { applyReadOnlyGate } from '@gjsify/mcp';
 import { describe, expect, it } from '@gjsify/unit';
 
-import { applyReadOnlyGate } from '../../../src/frontends/mcp/runtime.ts';
 import { createRecorder } from './recorder.ts';
 
 // The gate is the one piece of this server that is load-bearing for safety, and its whole value
 // is in the DIRECTION of the comparison. The obvious spelling — drop only when
 // `readOnlyHint === false` — passes a "keeps read-only tools" test just as happily while failing
 // open on every unannotated tool. So the case that actually matters is `omitted`.
+//
+// The implementation is `@gjsify/mcp`'s (it was this repo's, verbatim, until 0.54.0). The test
+// stays: it pins the behaviour this server's safety claim rests on, and an upstream change that
+// flipped the direction would otherwise only show up as a mutating tool in `tools/list`.
 export default async () => {
   await describe('applyReadOnlyGate (writes disallowed)', async () => {
     await it('registers a tool that proves it is read-only', async () => {

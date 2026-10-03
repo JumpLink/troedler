@@ -2,22 +2,42 @@
  * Opening the database — and proving it works before anything trusts it.
  *
  * `DatabaseSync` looks like Node's `node:sqlite` because that is the API it
- * implements, but under GJS it is a libgda wrapper, and one of its behaviours
- * makes an ordinary bug invisible: **`all()` and `get()` catch exceptions and
- * return `[]` / `undefined`.** A query against a column that does not exist
- * therefore reports "nothing found" for the rest of the process's life.
+ * implements, but under GJS it is a libgda wrapper. Until gjsify 0.52.0 one of
+ * its behaviours made an ordinary bug invisible: **`all()` and `get()` caught
+ * every exception and returned `[]` / `undefined`.** A query against a column
+ * that does not exist reported "nothing found" for the rest of the process's
+ * life.
  *
  * That is the expensive failure class — green, and it checked nothing. The
- * defence is not to wrap every read in a retry, it is to make the condition
+ * defence was never to wrap every read in a retry; it is to make the condition
  * impossible to reach silently: `openDatabase` verifies the schema and
- * round-trips a canary row at startup. If reads are being swallowed, the
- * program says so on the first command rather than reporting an empty
- * watchlist forever.
+ * round-trips a canary row at startup, so a read path that quietly returns
+ * nothing makes the program say so on the first command rather than reporting
+ * an empty watchlist forever.
  *
- * // gjsify gap (unfixed, gjsify#1674): still true on 0.47.0. Measured under gjs
- * // 1.88.1 at the bump — `db.prepare('SELECT * FROM does_not_exist').get()`
- * // returns `undefined` instead of throwing, where Node throws. So the canary
- * // below is LOAD-BEARING and must not be "simplified" away as a startup cost.
+ * CLOSED upstream at 0.52.0 (gjsify#1674, "let a rejected query raise"). A
+ * 21-check probe under gjs, one setter and one failure mode at a time: on
+ * 0.47.0 `all()` and `get()` swallowed the exception in four of four shapes
+ * (missing table, missing column, bad SQL — and `undefined` binds THREW where
+ * Node writes NULL); on 0.52.0 all four are green.
+ *
+ * RE-MEASURED at the 0.53.0 bump rather than assumed, by
+ * `scripts/probe-gjsify-0.53.mjs` — and this time the diff IS the result:
+ *
+ *     0.52.0   21 green, 3 red
+ *     0.53.0   24 green, 0 red
+ *
+ * The three that turned are #1841 (an INTEGER above 2^31 was refused outright
+ * with "Ganzzahlwert ist zu groß" — twice, as a lone value and after a small
+ * row) and #1893 (an `EXISTS` subquery was a syntax error to libgda). The first
+ * is the one this file should have been afraid of: `price_minor` is an INTEGER
+ * column, and a market where a bike costs a five-figure euro puts it over 2^31.
+ * Timestamps are TEXT, which is why they were never affected.
+ *
+ * The canary stays anyway, and not out of sentiment: swallowed exceptions were
+ * never the only way a write goes in and a read comes back empty. Its cost is
+ * three statements at open, and it is the only check that exercises the read
+ * path before a person is told their watchlist is empty.
  */
 
 import { mkdirSync } from 'node:fs';
@@ -60,8 +80,8 @@ function assertReadsWork(db: Database): void {
   if (back?.value !== stamp) {
     throw new StoreUnusableError(
       'Die lokale Datenbank nimmt Schreibvorgänge an, liefert sie aber nicht zurück. ' +
-        'Unter GJS verschluckt der libgda-Wrapper Fehler in all()/get() — bis das geklärt ist, ' +
-        'wäre jede Antwort still leer. Prüfe die Datei und libgda-sqlite.',
+        'Eine Abfrage, deren Ergebnis nicht zurückkommt, wäre jede Antwort still leer. ' +
+        'Prüfe die Datei und libgda-sqlite.',
     );
   }
 }

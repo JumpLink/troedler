@@ -80,11 +80,14 @@
     "test": {
       "entry": "tests/test.mts",
       "outdir": "dist",
-      "runtimes": ["gjs", "node"]
+      "runtimes": [
+        "gjs",
+        "node"
+      ]
     }
   },
   "dependencies": {
-    "@gjsify/node-gi": "0.47.0",
+    "@gjsify/node-gi": "0.54.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@troedler/booklooker": "*",
     "@troedler/compliance": "*",
@@ -102,17 +105,18 @@
     "zod": "^4.4.3"
   },
   "optionalDependencies": {
-    "@gjsify/node-runtime-darwin-arm64": "0.47.0",
-    "@gjsify/node-runtime-darwin-x64": "0.47.0",
-    "@gjsify/node-runtime-win32-x64": "0.47.0"
+    "@gjsify/node-runtime-darwin-arm64": "0.54.0",
+    "@gjsify/node-runtime-darwin-x64": "0.54.0",
+    "@gjsify/node-runtime-win32-x64": "0.54.0"
   },
   "devDependencies": {
-    "@gjsify/adwaita-app": "0.47.0",
-    "@gjsify/cli": "0.47.0",
-    "@gjsify/node-globals": "0.47.0",
-    "@gjsify/rolldown-native": "0.47.0",
-    "@gjsify/runtime": "0.47.0",
-    "@gjsify/unit": "0.47.0",
+    "@gjsify/adwaita-app": "0.54.0",
+    "@gjsify/cli": "0.54.0",
+    "@gjsify/mcp": "0.54.0",
+    "@gjsify/node-globals": "0.54.0",
+    "@gjsify/rolldown-native": "0.54.0",
+    "@gjsify/runtime": "0.54.0",
+    "@gjsify/unit": "0.54.0",
     "@types/node": "^26.1.2",
     "@types/yargs": "^17.0.35",
     "oxfmt": "^0.64.0",

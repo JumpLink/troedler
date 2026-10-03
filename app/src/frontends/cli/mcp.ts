@@ -2,9 +2,9 @@
  * `troedler mcp` — the long-lived stdio server.
  *
  * Deliberately NOT wrapped in `runAndExit`: every other command finishes and
- * exits, this one serves until the client closes stdin. `serveStdio` owns that
- * lifecycle, including the exit — see the reparenting note in mcp/runtime.ts
- * for what happens when nobody does.
+ * exits, this one serves until the client closes stdin. `serveStdio` from
+ * `@gjsify/mcp` owns that lifecycle, including the exit — see its source for
+ * what happens when nobody does.
  */
 
 import type { CommandModule } from 'yargs';

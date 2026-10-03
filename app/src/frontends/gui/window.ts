@@ -24,6 +24,7 @@ import type { ResultLayout } from '@troedler/store';
 
 import type { Context } from '../../core/context.ts';
 import { APP_NAME } from './constants.ts';
+import { registerIcons } from './icons.ts';
 import { ProvidersView } from './views/providers-view.ts';
 import { SearchView } from './views/search-view.ts';
 import { SettingsDialog } from './views/settings-dialog.ts';
@@ -43,6 +44,11 @@ export class MainWindow extends Adw.ApplicationWindow {
     hooks: { view?: string; query?: string; layout?: ResultLayout },
   ) {
     super({ application: app, title: APP_NAME, defaultWidth: 980, defaultHeight: 720 });
+
+    // First thing, before any widget asks the theme for an icon. Adwaita has no
+    // funnel, so the filter button would be an empty white rectangle without this
+    // (`icons.ts` has the story and `scripts/guard-icon-names.mjs` the fence).
+    registerIcons();
 
     this.providersView = new ProvidersView(context);
     const searchView = new SearchView(context);
@@ -79,6 +85,23 @@ export class MainWindow extends Adw.ApplicationWindow {
     breakpoint.add_setter(bottom, 'reveal', true);
     breakpoint.add_setter(header.get_title_widget()!, 'visible', false);
     this.add_breakpoint(breakpoint);
+
+    // The query bar used to stack under a breakpoint, and the breakpoint is gone
+    // rather than moved: the row no longer needs one. It carried five controls
+    // beside the entry, and below 700 px the entry absorbed the whole deficit and
+    // rendered the query as the `⊗` clear glyph — 57 px of entry and 13 px of
+    // inner `GtkText` at 600 px, measured. The fix the stack came with was right
+    // about the width and wrong about the height: six rows of controls, a
+    // full-width „Suchen", a full-width „Stopp" and then a per-source block of
+    // seven lines, which is nearly all of a 600 px window with no results on it.
+    //
+    // The filters now live in a popover, so what is left beside the entry is a
+    // 34 px filter button and one run button — 156 px between them, against the
+    // 509 px the five controls asked for. That is why no breakpoint is needed
+    // here and why `width-chars: 12` on the entry is a floor that holds from
+    // 360 px upwards instead of a floor that only holds once the row has room.
+    // The 600 px breakpoint above is the Adwaita one (bottom switcher) and is
+    // about navigation, not about the entry.
 
     this.set_content(toolbar);
 

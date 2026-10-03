@@ -89,13 +89,49 @@ jobs:
       - name: Guard the apiHost ⟺ access correspondence
         run: node scripts/guard-api-hosts.mjs
 
-      # Also a grep. `new URL()` on GJS has exactly ONE working setter, `search`;
-      # the other nine throw "setting getter-only property" while every one of
-      # them works on Node — so the type check, the review and the Node test run
-      # all pass and the program dies on the runtime it ships on. Re-measure at
-      # each gjsify bump and delete only the lines that turn green.
-      - name: Guard against URL setters that throw under GJS
-        run: node scripts/guard-url-setters.mjs
+      # The capability probe that travels with every gjsify bump, as a committed
+      # file so the NEXT person can re-run it instead of re-deriving it from a
+      # release note. It gates on BOTH runtimes because every gap it covers bit
+      # on GJS while Node stayed green — a green node run proves nothing here.
+      #
+      # It also earns its keep by being able to go red: at the 0.53.0 bump it
+      # printed 21 green / 3 red on 0.52.0 and 24 / 0 on 0.53.0, and the three were
+      # a real finding (an INTEGER above 2^31 was refused outright, and
+      # `price_minor` is an INTEGER column). Do not "simplify" a check away
+      # because it has been green for a while.
+      - name: Capability probe (gjs)
+        run: |
+          gjsify build scripts/probe-gjsify-0.53.mjs --app gjs --outfile app/dist/probe.gjs.mjs
+          gjsify run app/dist/probe.gjs.mjs
+
+      - name: Capability probe (node)
+        run: node scripts/probe-gjsify-0.53.mjs
+
+      # `guard-url-setters.mjs` used to live here and was deleted WHOLE at the
+      # 0.52.0 bump: all ten WHATWG setters measure green under gjs now, so the
+      # file had nothing left to refuse. Its ancestor was deleted the same way at
+      # 0.42.0 — but that time only five of the ten were green, which is how the
+      # other nine spent five releases unguarded. The rule that survives both
+      # deletions: re-measure at every bump and delete the file only when the
+      # measurement has no red line left, not when one of them turned.
+
+      # Also a lookup, and for the same reason: an icon name the icon theme does
+      # not have type-checks, compiles, runs, and renders as an EMPTY WHITE
+      # RECTANGLE on a Gtk.MenuButton rather than as a missing-image placeholder.
+      # Nothing else in this pipeline could see that — only a screenshot did. The
+      # check also proves the app's own bundled icon resource still matches its
+      # SVG, using nothing but Node.
+      - name: Guard against icon names the theme cannot draw
+        run: node scripts/guard-icon-names.mjs
+
+      # A `.blp` template's `$Name` and the `GTypeName` registering it are ONE
+      # string. A rename on one side only makes GJS refuse to build the template,
+      # `super()` throw, and the window come up with no search view in it — an
+      # empty frame where the whole app is. It type-checked, linted, built, passed
+      # 1487 assertions on both runtimes and went green in CI first; only a
+      # screenshot showed it.
+      - name: Guard against a template and its GTypeName drifting apart
+        run: node scripts/guard-template-types.mjs
 
       # Both bundles. The GUI is a separate entry point because `import Adw`
       # becomes a top-level `gi://Adw` — building it here is what keeps that

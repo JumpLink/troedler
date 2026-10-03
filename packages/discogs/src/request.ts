@@ -80,8 +80,11 @@ export interface SearchUrlInput {
  *
  * Fixed at the core (gjsify PR #1245, released in 0.42.0) and re-measured here
  * at the bump — 13 of 13 checks green on 0.42.0, 6 of them red on 0.41.0. The
- * shape stays anyway: building a query explicitly is what it should have been,
- * and it needs no mutation to be correct.
+ * remaining nine setters arrived later (#1678, 0.52.0), so mutation would work
+ * too by now — and still does at 0.53.0, re-measured by
+ * `scripts/probe-gjsify-0.53.mjs` (24 of 24 green under gjs and under node).
+ * The shape stays anyway: building a query explicitly is what it should have
+ * been, and it needs no mutation to be correct.
  */
 export function buildSearchUrl(input: SearchUrlInput): string {
   const params = new URLSearchParams();

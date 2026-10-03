@@ -16,6 +16,7 @@
 import { describe, expect, it } from '@gjsify/unit';
 
 import {
+  activeFilterChips,
   bandText,
   emptinessNotice,
   explainLines,
@@ -28,6 +29,7 @@ import {
   providerState,
   listingFacts,
   reportLine,
+  sourceCensus,
   sourceHeading,
   type PriceBand,
   type ProviderReport,
@@ -197,6 +199,90 @@ export default async () => {
       );
       const cut = reportLine(report({ filters: { ...report().filters, dropped: 10 } }));
       expect(cut.includes('10 weitere')).toBe(true);
+    });
+  });
+
+  await describe('present: die Quellen-Zählung', async () => {
+    // The GUI collapsed seven source blocks into one line to win back the height
+    // a six-control toolbar was spending. This is the line that has to carry the
+    // blocks' whole job, so every test below is about what it still NAMES.
+    const ok = report({ provider: 'quoka', outcome: 'ok', count: 65 });
+    const skip = report({ provider: 'ebay', outcome: 'skipped', count: 0, message: 'kein Schlüssel' });
+    const fail = report({
+      provider: 'discogs',
+      outcome: 'failed',
+      count: 0,
+      errorKind: 'parse-failed',
+      message: 'Markup bewegt',
+    });
+
+    await it('schweigt, solange keine Quelle gefragt wurde', async () => {
+      // A summary of a search that never ran would be a reassurance nobody earned.
+      expect(sourceCensus([], 0, 0)).toBe(null);
+    });
+
+    await it('nennt eine übersprungene Quelle, statt sie zu zählen', async () => {
+      const census = sourceCensus([ok, skip], 2, 65);
+      expect(census?.text).toContain('übersprungen: eBay');
+      // A count here would let a skipped eBay pass for a market with nothing on
+      // it — the one reading the block exists to prevent.
+      expect(census?.text).not.toContain('übersprungen: 1');
+      expect(census?.tone).toBe('warning');
+      // A skip is a decision, not a breakage: it does not spend the height.
+      expect(census?.expand).toBe(false);
+    });
+
+    await it('färbt und öffnet einen Fehler selbst, einen Sprung nicht', async () => {
+      // Same line, two very different readings — a decision (terms, missing key)
+      // and a breakage. The GUI must not paint the first red, and must not let
+      // the second hide behind a collapsed row.
+      const broken = sourceCensus([ok, fail], 2, 65);
+      expect(broken?.text).toContain('FEHLER: Discogs');
+      expect(broken?.tone).toBe('error');
+      expect(broken?.expand).toBe(true);
+      // A disk with both: still the failure that decides the colour.
+      expect(sourceCensus([ok, skip, fail], 3, 65)?.tone).toBe('error');
+    });
+
+    await it('sagt, dass die Suche noch läuft, statt fertig zu wirken', async () => {
+      // One of seven in, seven asked: three answers with three sources still
+      // queued. Read as finished, that is a search that stopped early.
+      const running = sourceCensus([ok], 7, 65);
+      expect(running?.text).toContain('Suche läuft');
+      expect(running?.text).toContain('1 von 7 Quellen geantwortet');
+      expect(sourceCensus([ok], 1, 65)?.text).toBe('65 Treffer aus 1 Quelle.');
+    });
+
+    await it('bleibt bei lauter Antworten unauffällig', async () => {
+      const clean = sourceCensus([ok, report({ provider: 'markt-de', outcome: 'empty', count: 0 })], 2, 65);
+      expect(clean?.text).toBe('65 Treffer aus 2 Quellen.');
+      expect(clean?.tone).toBe('ok');
+      expect(clean?.expand).toBe(false);
+    });
+  });
+
+  await describe('present: die Filter-Chips', async () => {
+    // The filters live in a popover now, and a filter a person cannot see is one
+    // they apply twice. The chip row is the receipt, so the test is what it says
+    // — and the keys, because a chip that cannot be dismissed is a badge.
+    const none = { maxPriceMinor: null, sellerType: null, explain: false };
+
+    await it('zeigt keinen Chip, wenn nichts gefiltert wird', async () => {
+      // `toHaveLength` rather than `toEqual([])`: a fresh array is never the same
+      // reference as the literal, and the length is the thing being asserted.
+      expect(activeFilterChips(none)).toHaveLength(0);
+      // A ceiling of zero is no ceiling, not a free bicycle.
+      expect(activeFilterChips({ ...none, maxPriceMinor: 0 })).toHaveLength(0);
+    });
+
+    await it('nennt jeden gesetzten Filter mit seinem Schlüssel', async () => {
+      const chips = activeFilterChips({ maxPriceMinor: 20000, sellerType: 'private', explain: true });
+      expect(chips.map((c) => c.key).join(',')).toBe('price,seller,explain');
+      expect(plain(chips[0].text)).toBe('Höchstpreis 200,00 €');
+      // The word for the value comes from labels.ts, not from a fourth copy here.
+      expect(chips[1].text).toBe('nur privat');
+      expect(chips[2].text).toBe('Erklären an');
+      expect(activeFilterChips({ ...none, sellerType: 'commercial' })[0].text).toBe('nur gewerblich');
     });
   });
 
