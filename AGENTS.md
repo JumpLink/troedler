@@ -69,6 +69,14 @@ through the `MarketProvider` port, injected by `app`. Wanting to import an adapt
 means a method is missing on the port. **Parsing is pure** — every adapter keeps `parse.ts` free of
 `fetch`; I/O lives in `request.ts`.
 
+## Licence
+
+App and repo root: AGPL-3.0-or-later. `packages/{core,http,html,store,compliance}`:
+LGPL-3.0-or-later (`LICENSE` = LGPL text, `COPYING` = GPL text). The marketplace adapters
+(`ebay`, `discogs`, `booklooker`, `auktion`, `kleinanzeigen`, `markt`) stay AGPL by decision: they
+are adapters for third-party platforms. An LGPL package must never depend on an AGPL one. No SPDX
+headers in sources.
+
 ## Run / build / test
 
 ```bash

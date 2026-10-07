@@ -178,6 +178,11 @@ No argument, no delay.
 
 [AGPL-3.0-or-later](LICENSE) © Pascal Garber.
 
+The reusable packages `core`, `http`, `html`, `store` and `compliance` under `packages/` are
+[LGPL-3.0-or-later](packages/core/LICENSE) (full GPL text in each `COPYING`). The marketplace
+adapters (`ebay`, `discogs`, `booklooker`, `auktion`, `kleinanzeigen`, `markt`) stay AGPL on
+purpose: they are adapters for third-party platforms.
+
 Free to use, modify and share. The AGPL adds one condition to the GPL: anyone who
 runs this program **as a network service** must offer that service's users the
 source of their version. Running it locally for yourself adds no obligation.
