@@ -66,6 +66,7 @@ function report(over: Partial<ProviderReport> = {}): ProviderReport {
     filters: {
       serverSide: ['sellerType'],
       clientSide: [],
+      radius: null,
       unenforced: [],
       before: 20,
       after: 20,

@@ -173,6 +173,7 @@ Category is a path, not a parameter: `/anzeigen/elektronik/computer/`.
 
 A radius parameter that silently returns nothing is the worst outcome available
 on this source, so radius stays the kernel's job and never enters a URL.
+The kernel filters it after the fetch from postcode centroids ([geodaten.md](../geodaten.md)).
 `serverFilters` is therefore `['sellerType', 'sort']`, where `sort` means only
 `newest` — see below.
 

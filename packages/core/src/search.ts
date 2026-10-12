@@ -16,6 +16,7 @@
  */
 
 import { applyPostFilters, type PostFilterReport } from './filter.ts';
+import { radiusNotice } from './present.ts';
 import {
   dedupeWithinProvider,
   groupByIdentity,
@@ -212,6 +213,7 @@ async function runOne(
       before: 0,
       after: 0,
       dropped: 0,
+      radius: null,
     },
   };
 
@@ -258,7 +260,7 @@ async function runOne(
         totalEstimate: result.totalEstimate,
         requests: spent() ?? result.requests,
         durationMs: now() - started,
-        warnings: [...result.warnings],
+        warnings: [...result.warnings, ...(report.radius ? [radiusNotice(report.radius)] : [])],
         filters: { ...report, serverSide: result.applied.map(String) },
       },
     };

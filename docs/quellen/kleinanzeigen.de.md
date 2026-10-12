@@ -169,7 +169,7 @@ Das ist die zentrale Konsequenz, und sie ist im Programm sichtbar statt weggesch
 | Kategorie | ja (`c<id>`) | Quelle, wenn konfiguriert |
 | Ort ohne Umkreis | ja (`l<id>`) | Quelle, wenn konfiguriert |
 | Preis von/bis | **nein**, `/*/preis:*` gesperrt | Kern, nach dem Abruf |
-| Umkreis | **nein**, alle `…r<km>` gesperrt | niemand — offen als „unenforced" gemeldet |
+| Umkreis | **nein**, alle `…r<km>` gesperrt | Kern, nach dem Abruf, aus PLZ-Mittelpunkten ([Geodaten](../geodaten.md)) |
 | Sortierung | **nein**, `/*/sortierung:*` gesperrt | Kern |
 | privat / gewerblich | **nein**, `/*/anbieter:*` gesperrt | Kern |
 | Versand | **nein**, `/*versand:*` gesperrt | Kern |

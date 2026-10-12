@@ -6,6 +6,7 @@ are linked from it at the point where each matters.
 | File | What it carries |
 |---|---|
 | [leitplanken.md](leitplanken.md) | The hard rules in full, the case law behind them, and the image rule that was deliberately reversed on 2026-09-06 |
+| [geodaten.md](geodaten.md) | The bundled postcode table behind the local radius filter: source, licence, how to regenerate |
 | [architektur.md](architektur.md) | Package layout and what each package may import; the three surfaces (CLI, MCP, GUI) and the seam under them |
 | [gruen-und-nichts-geprueft.md](gruen-und-nichts-geprueft.md) | The failure mode this project is built against, every mechanism, and the incidents that produced them |
 | [gui.md](gui.md) | Layout incidents with their measurements, the icon-resource trap, and the four guards that now catch what a screenshot used to |

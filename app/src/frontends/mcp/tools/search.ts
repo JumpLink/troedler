@@ -48,6 +48,8 @@ export function listingRow(l: Listing, verdict?: PriceVerdict) {
     seller_type: l.sellerType,
     delivery: l.delivery,
     location: fmtLocation(l.location),
+    // Straight line between postcode centroids; `null` when the offer's location is unknown.
+    distance_km: l.location.distanceKm,
     listed_at: l.listedAt,
     ends_at: l.endsAt,
     url: l.url,
@@ -78,6 +80,10 @@ export function reportRow(r: ProviderReport) {
     rows_fetched: r.filters.before,
     rows_after_filters: r.filters.after,
     rows_dropped_by_limit: r.filters.dropped,
+    // Present when the radius was applied here, not by the source.
+    radius_filtered_locally: r.filters.radius
+      ? { km: r.filters.radius.km, rows_too_far: r.filters.radius.removed, rows_unlocated_kept: r.filters.radius.unlocated }
+      : null,
     disclaimer: r.disclaimer,
   };
 }
