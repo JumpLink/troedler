@@ -154,7 +154,11 @@ As an MCP server, point your client at:
 ```
 
 Tools are read-only unless `TROEDLER_MCP_ALLOW_WRITE=1` is set, and the server enforces that by
-dropping any tool that does not declare itself read-only.
+dropping any tool that does not declare itself read-only. Two tools need it: `market_watch_save`
+(creates or removes a saved search) and `market_watch_run` (runs one saved search and returns only
+the offers not seen before, marking them seen — the building block for a scheduled check; it
+carries the same source reports and notices as `market_search`, and a run in which no source
+answered is not recorded).
 
 ## Where things are kept
 

@@ -14,6 +14,8 @@ export interface RecordedTool {
   description?: string;
   inputSchema?: Record<string, { safeParse(value: unknown): { success: boolean } }>;
   annotations?: { readOnlyHint?: boolean; openWorldHint?: boolean };
+  /** The handler, kept so a test can call the tool without a transport. */
+  handler?: (params: Record<string, unknown>) => Promise<{ content: { text: string }[]; isError?: boolean }>;
 }
 
 export interface Recorder {
@@ -26,8 +28,12 @@ export interface Recorder {
 export function createRecorder(): Recorder {
   const tools: RecordedTool[] = [];
   const server = {
-    registerTool: (name: string, config: Omit<RecordedTool, 'name'>) => {
-      tools.push({ name, ...config });
+    registerTool: (
+      name: string,
+      config: Omit<RecordedTool, 'name' | 'handler'>,
+      handler?: RecordedTool['handler'],
+    ) => {
+      tools.push({ name, ...config, handler });
       return undefined;
     },
   } as unknown as McpServer;

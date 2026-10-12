@@ -21,7 +21,7 @@ import { mcpErrorFrom, mcpSuccess } from '@gjsify/mcp';
 import { z } from 'zod';
 
 import { CONDITION_ORDER, fmtLocation, fmtMoney, RESULTS_PER_PROVIDER, RESULTS_TOTAL } from '@troedler/core';
-import type { Condition, Listing, ProviderId } from '@troedler/core';
+import type { Condition, Listing, PriceVerdict, ProviderId, ProviderReport } from '@troedler/core';
 
 import { allListings, getListing, search } from '../../../core/actions/index.ts';
 import type { Context } from '../../../core/context.ts';
@@ -36,6 +36,51 @@ const PROVIDER_IDS: readonly ProviderId[] = [
   'markt-de',
   'quoka',
 ];
+
+/** One offer as the MCP surface shows it. Shared with `market_watch_run` so the two cannot drift. */
+export function listingRow(l: Listing, verdict?: PriceVerdict) {
+  return {
+    key: l.key,
+    title: l.title,
+    price: fmtMoney(l.totalPrice ?? l.price),
+    price_kind: l.priceKind,
+    condition: l.condition,
+    seller_type: l.sellerType,
+    delivery: l.delivery,
+    location: fmtLocation(l.location),
+    listed_at: l.listedAt,
+    ends_at: l.endsAt,
+    url: l.url,
+    verdict,
+  };
+}
+
+/** One provider's report, including the `disclaimer` a caller must pass on and the filters that did NOT take effect. */
+export function reportRow(r: ProviderReport) {
+  return {
+    provider: r.provider,
+    outcome: r.outcome,
+    count: r.count,
+    error_kind: r.errorKind,
+    message: r.message,
+    truncated: r.truncated,
+    requests: r.requests,
+    duration_ms: r.durationMs,
+    warnings: r.warnings,
+    filters_applied_by_source: r.filters.serverSide,
+    filters_applied_locally: r.filters.clientSide,
+    filters_not_applied: r.filters.unenforced,
+    // Without these three an agent reading `outcome: "empty"` plus
+    // `filters_applied_locally: ["maxPrice"]` cannot tell whether zero
+    // or twenty rows were discarded — while the tool description tells
+    // it to check `reports` before concluding an item is unavailable.
+    // The human surface printed them; this one dropped them.
+    rows_fetched: r.filters.before,
+    rows_after_filters: r.filters.after,
+    rows_dropped_by_limit: r.filters.dropped,
+    disclaimer: r.disclaimer,
+  };
+}
 
 export function registerSearchTools(server: McpServer, context: Context): void {
   server.registerTool(
@@ -140,20 +185,7 @@ export function registerSearchTools(server: McpServer, context: Context): void {
           crossCheck: params.cross_check ?? 0,
         });
 
-        const row = (l: Listing) => ({
-          key: l.key,
-          title: l.title,
-          price: fmtMoney(l.totalPrice ?? l.price),
-          price_kind: l.priceKind,
-          condition: l.condition,
-          seller_type: l.sellerType,
-          delivery: l.delivery,
-          location: fmtLocation(l.location),
-          listed_at: l.listedAt,
-          ends_at: l.endsAt,
-          url: l.url,
-          verdict: result.verdicts.get(l.key),
-        });
+        const row = (l: Listing) => listingRow(l, result.verdicts.get(l.key));
 
         const groups = [...result.outcome.grouped].map(([provider, listings]) => {
           const band = result.bands.get(provider);
@@ -218,29 +250,7 @@ export function registerSearchTools(server: McpServer, context: Context): void {
           cross_check: result.outcome.crossCheck,
           /** Rows the cross-check added. Referenced from `products`, absent from `groups`. */
           cross_checked: crossChecked.map(row),
-          reports: result.outcome.reports.map((r) => ({
-            provider: r.provider,
-            outcome: r.outcome,
-            count: r.count,
-            error_kind: r.errorKind,
-            message: r.message,
-            truncated: r.truncated,
-            requests: r.requests,
-            duration_ms: r.durationMs,
-            warnings: r.warnings,
-            filters_applied_by_source: r.filters.serverSide,
-            filters_applied_locally: r.filters.clientSide,
-            filters_not_applied: r.filters.unenforced,
-            // Without these three an agent reading `outcome: "empty"` plus
-            // `filters_applied_locally: ["maxPrice"]` cannot tell whether zero
-            // or twenty rows were discarded — while the tool description tells
-            // it to check `reports` before concluding an item is unavailable.
-            // The human surface printed them; this one dropped them.
-            rows_fetched: r.filters.before,
-            rows_after_filters: r.filters.after,
-            rows_dropped_by_limit: r.filters.dropped,
-            disclaimer: r.disclaimer,
-          })),
+          reports: result.outcome.reports.map(reportRow),
         });
       } catch (err) {
         return mcpErrorFrom(err);
