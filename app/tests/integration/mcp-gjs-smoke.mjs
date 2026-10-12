@@ -47,7 +47,7 @@ const READ_ONLY_TOOLS = [
   'market_search_local',
   'market_watch_list',
 ];
-const WRITE_TOOL = 'market_watch_save';
+const WRITE_TOOLS = ['market_watch_run', 'market_watch_save'];
 
 async function connect(extraEnv) {
   const transport = new StdioClientTransport({
@@ -110,15 +110,17 @@ const withWrites = (await writeClient.listTools()).tools;
 const names = withWrites.map((t) => t.name).sort();
 assert.deepEqual(
   names,
-  [...READ_ONLY_TOOLS, WRITE_TOOL].sort(),
-  'write catalogue is not the read-only set plus the one writer',
+  [...READ_ONLY_TOOLS, ...WRITE_TOOLS].sort(),
+  'write catalogue is not the read-only set plus the mutating tools',
 );
-assert.equal(
-  withWrites.find((t) => t.name === WRITE_TOOL)?.annotations?.readOnlyHint,
-  false,
-  'the write tool must declare itself mutating — the gate believes the annotation',
-);
-console.log(`OK: TROEDLER_MCP_ALLOW_WRITE=1 adds exactly ${WRITE_TOOL}`);
+for (const name of WRITE_TOOLS) {
+  assert.equal(
+    withWrites.find((t) => t.name === name)?.annotations?.readOnlyHint,
+    false,
+    `${name} must declare itself mutating — the gate believes the annotation`,
+  );
+}
+console.log(`OK: TROEDLER_MCP_ALLOW_WRITE=1 adds exactly ${WRITE_TOOLS.join(', ')}`);
 await writeClient.close();
 
 // ── 3. the server exits when its client goes away ───────────────────────────

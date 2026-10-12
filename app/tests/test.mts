@@ -30,6 +30,7 @@ import actionRobots from './unit/actions/robots.test.ts';
 
 import mcpGate from './unit/mcp/gate.test.ts';
 import mcpTools from './unit/mcp/tools.test.ts';
+import mcpWatchRun from './unit/mcp/watch-run.test.ts';
 
 run({
   normalize,
@@ -54,4 +55,5 @@ run({
   actionRobots,
   mcpGate,
   mcpTools,
+  mcpWatchRun,
 });

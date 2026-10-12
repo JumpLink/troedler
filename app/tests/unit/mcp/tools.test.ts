@@ -57,12 +57,15 @@ export default async () => {
       for (const tool of rec.tools) expect(tool.annotations?.readOnlyHint).toBe(true);
     });
 
-    await it('adds exactly the mutating tool when writes are allowed', async () => {
+    await it('adds exactly the mutating tools when writes are allowed', async () => {
       const open = catalogue(true);
       const closed = catalogue(false);
       const extra = open.names().filter((n) => !closed.names().includes(n));
-      expect(extra).toEqualArray(['market_watch_save']);
+      expect(extra).toEqualArray(['market_watch_run', 'market_watch_save']);
       expect(open.find('market_watch_save')?.annotations?.readOnlyHint).toBe(false);
+      // It writes the seen index, so claiming read-only would let it past the gate by default.
+      expect(open.find('market_watch_run')?.annotations?.readOnlyHint).toBe(false);
+      expect(open.find('market_watch_run')?.annotations?.openWorldHint).toBe(true);
     });
 
     await it('marks the network-touching tools as open-world', async () => {
@@ -78,6 +81,13 @@ export default async () => {
       // are none for sale" when a source was switched off.
       const description = catalogue(false).find('market_search')?.description ?? '';
       expect(description.includes('reports')).toBe(true);
+    });
+
+    await it('describes market_watch_run so a caller keeps the source notices and the once-only effect', async () => {
+      const description = catalogue(true).find('market_watch_run')?.description ?? '';
+      expect(description.includes('disclaimer')).toBe(true);
+      expect(description.includes('reports')).toBe(true);
+      expect(description.includes('seen')).toBe(true);
     });
   });
 };

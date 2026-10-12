@@ -1,8 +1,9 @@
 /**
  * Saved searches, the local index and price history.
  *
- * `market_watch_save` MUTATES, so it carries `readOnlyHint: false` and
- * `applyReadOnlyGate` from `@gjsify/mcp` drops it unless
+ * `market_watch_save` and `market_watch_run` MUTATE (the second one only the
+ * local seen index, but it does), so both carry `readOnlyHint: false` and
+ * `applyReadOnlyGate` from `@gjsify/mcp` drops them unless
  * `TROEDLER_MCP_ALLOW_WRITE=1`. That is the point of the gate: the annotation
  * is the truth, and forgetting it costs a missing tool rather than a silent
  * write.
@@ -14,8 +15,9 @@ import { z } from 'zod';
 
 import { fmtMinor, parseListingKey } from '@troedler/core';
 
-import { addSearch, listSearches, removeSearch } from '../../../core/actions/index.ts';
+import { addSearch, listSearches, removeSearch, runSearch } from '../../../core/actions/index.ts';
 import type { Context } from '../../../core/context.ts';
+import { listingRow, reportRow } from './search.ts';
 
 export function registerWatchTools(server: McpServer, context: Context): void {
   server.registerTool(
@@ -106,6 +108,37 @@ export function registerWatchTools(server: McpServer, context: Context): void {
             observed_at: r.observedAt,
             price: fmtMinor(r.minor, r.currency),
           })),
+        });
+      } catch (err) {
+        return mcpErrorFrom(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'market_watch_run',
+    {
+      title: 'Run a saved search, report only new offers',
+      description:
+        'Run one saved search against its marketplaces and return ONLY the offers not seen by an earlier run, then mark them seen. ' +
+        'Marks offers as seen, so call it once per check and pass on what it returns — a second call finds nothing. ' +
+        'Same shape as market_search: check `reports` before concluding "nothing new" (a source can be off, unconfigured or failing), ' +
+        'and pass on each report `disclaimer`. If `no_source_answered` is true the run was NOT recorded.',
+      inputSchema: {
+        name: z.string().describe('Name of the saved search (see market_watch_list)'),
+      },
+      annotations: { readOnlyHint: false, openWorldHint: true },
+    },
+    async (params) => {
+      try {
+        const result = await runSearch(context, params.name);
+        return mcpSuccess({
+          name: result.name,
+          no_source_answered: result.noSourceAnswered,
+          new_count: result.fresh.length,
+          seen_total: result.seenTotal,
+          listings: result.fresh.map((l) => listingRow(l)),
+          reports: result.reports.map(reportRow),
         });
       } catch (err) {
         return mcpErrorFrom(err);
