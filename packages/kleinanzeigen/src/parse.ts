@@ -234,7 +234,7 @@ function rowToListing(ad: HtmlElement, options: ParseOptions, fetchedAt: string)
 }
 
 function isTopAd(li: HtmlElement): boolean {
-  return (attr(li, 'class') ?? '').split(/\s+/).includes(SRP.topAdRow);
+  return query(li, SRP.topAdBadge) !== null;
 }
 
 /**

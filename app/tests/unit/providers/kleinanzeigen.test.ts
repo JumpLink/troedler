@@ -5,7 +5,7 @@
  * result page: this source's terms forbid reproducing their content, and a
  * checked-in copy of somebody's ad would be exactly that. What the fixtures do
  * carry is the STRUCTURE that was measured against the live site on
- * 2026-08-21 — the `li`/`article` nesting, the `is-topad` marker, the
+ * 2026-08-21 — the `li`/`article` nesting, the top-ad badge, the
  * zero-width space inside a place name, the „Es wurden keine Ergebnisse"
  * sentence — because those are what the parser is allowed to depend on.
  *
@@ -55,29 +55,32 @@ function ad(options: {
   json?: string;
 }): string {
   return `
-    <li class="ad-listitem fully-clickable-card ${options.topAd ? 'badge-topad is-topad' : ''}">
-      <article class="aditem" data-adid="${options.id}" data-href="/s-anzeige/ein-slug/${options.id}-217-9409">
-        <div class="aditem-image">
+    <li data-clickable="card" class="relative">
+      ${options.topAd ? '<svg width="33" height="16"><path d="M0 0h33v16H0z"></path></svg>' : ''}
+      <article class="flex" data-adid="${options.id}" data-href="/s-anzeige/ein-slug/${options.id}-217-9409">
+        <div class="relative">
           ${options.json ?? `<script type="application/ld+json">{"@type":"ImageObject","contentUrl":"https://img.example/${options.id}?rule=$_59.AUTO","description":"${options.teaser ?? ''}"}</script>`}
           <img src="https://img.example/${options.id}?rule=$_2.AUTO">
-          <div class="galleryimage--counter">3</div>
+          <div class="absolute">3</div>
         </div>
-        <div class="aditem-main--top">
-          <div class="aditem-main--top--left"><i class="icon-pin-gray"></i> ${options.place} </div>
-          <div class="aditem-main--top--right"><i class="icon-calendar-open"></i> ${options.date} </div>
-        </div>
-        <div class="aditem-main--middle">
-          <h2 class="text-module-begin"><a href="/s-anzeige/ein-slug/${options.id}-217-9409">${options.title}</a></h2>
-          <p class="aditem-main--middle--description">${options.teaser ?? 'Teaser.'}</p>
-          <div class="aditem-main--middle--price-shipping">
-            <p class="aditem-main--middle--price-shipping--old-price">999 €</p>
-            <p class="aditem-main--middle--price-shipping--price">${options.price}</p>
+        <div class="grow">
+          <div class="flex justify-between">
+            <div class="flex"><svg data-title="locationOutline"><path d="M0 0"></path></svg><span>${options.place}</span></div>
+            ${options.date ? `<div class="flex"><svg data-title="calendarOutline"><path d="M0 0"></path></svg><span>${options.date}</span></div>` : ''}
           </div>
-        </div>
-        <div class="aditem-main--bottom">
-          <span class="simpletag">M (38)</span>
-          ${options.versand ? '<span class="simpletag tag-with-icon">Versand möglich</span>' : ''}
-          ${options.pro ? '<div class="badge-hint-pro-small-srp">PRO</div>' : ''}
+          <div class="flex flex-col">
+            <h3 class="line-clamp-2"><a href="/s-anzeige/ein-slug/${options.id}-217-9409">${options.title}</a></h3>
+            <p class="text-bodyRegular">${options.teaser ?? 'Teaser.'}</p>
+            <div class="flex">
+              <p class="text-title3 text-secondary">${options.price}</p>
+              <p class="text-title3 text-onSurfaceNonessential line-through">999 €</p>
+            </div>
+          </div>
+          <div><p class="flex">
+            <span>M (38)</span>
+            ${options.versand ? '<span data-dhl-promotion>Versand möglich</span>' : ''}
+          </p></div>
+          ${options.pro ? '<div class="truncate"><a href="/pro/ein-shop"><div>PRO</div></a><a href="/pro/ein-shop"><span>Ein Shopname</span></a></div>' : ''}
         </div>
       </article>
     </li>`;
@@ -86,16 +89,15 @@ function ad(options: {
 function page(options: { summary: string; rows: string; next?: string | null }): string {
   const next = options.next === undefined ? '/s-seite:2/testrad/k0' : options.next;
   return `<!DOCTYPE html><html lang="de"><head><title>Test</title>
-    ${next ? `<link rel="next" href="${next}">` : ''}
     </head><body>
-    <h1 class="breadcrump-summary">${options.summary}</h1>
+    <h1><span id="srp-breadcrumb-summary">${options.summary}</span></span></h1>
     <ul id="srchrslt-adtable">${options.rows}</ul>
+    <div id="pagination-container"><span>1</span><a href="/s-seite:2/testrad/k0" aria-label="Seite 2">2</a>
+    ${next ? `<div><a href="${next}" aria-label="Nächste">&gt;</a></div>` : ''}</div>
   </body></html>`;
 }
 
-const FULL_PAGE = page({
-  summary: '1 - 25 von 12.345 Ergebnissen für „testrad“ in Deutschland',
-  rows: [
+const FULL_ROWS = [
     ad({
       id: '900000001',
       title: 'Bezahlte Platzierung',
@@ -122,23 +124,27 @@ const FULL_PAGE = page({
       pro: true,
     }),
     ad({ id: '100000003', title: 'Rahmen', price: 'VB', place: '36179 Bebra', date: '26.04.2026' }),
-  ].join(''),
+  ].join('');
+
+const FULL_PAGE = page({
+  summary: '1 - 25 von 12.345 Ergebnissen für „testrad“ in Deutschland',
+  rows: FULL_ROWS,
 });
 
 const EMPTY_PAGE = `<!DOCTYPE html><html><head><title>x</title></head><body>
-  <h1 class="breadcrump-summary">Es wurden keine Ergebnisse für „qxzvwlkjhgfdsayy“ in Deutschland gefunden.</h1>
+  <h1><span id="srp-breadcrumb-summary">Es wurden keine Ergebnisse für „qxzvwlkjhgfdsayy“ in Deutschland gefunden.</span></h1>
 </body></html>`;
 
 /** The list is there, the rows are not — the markup moved. */
 const MOVED_MARKUP = `<!DOCTYPE html><html><head><title>x</title></head><body>
-  <h1 class="breadcrump-summary">1 - 25 von 12.345 Ergebnissen für „testrad“ in Deutschland</h1>
-  <ul id="srchrslt-adtable"><li class="result-card"><span>Herrenrad</span></li></ul>
+  <h1><span id="srp-breadcrumb-summary">1 - 25 von 12.345 Ergebnissen für „testrad“ in Deutschland</span></h1>
+  <ul id="srchrslt-adtable"><li><span>Herrenrad</span></li></ul>
 </body></html>`;
 
 /** Ads are there, but the row container was renamed. */
 const RENAMED_ROWS = `<!DOCTYPE html><html><head><title>x</title></head><body>
-  <h1 class="breadcrump-summary">1 - 25 von 12.345 Ergebnissen für „testrad“ in Deutschland</h1>
-  <ul id="srchrslt-adtable"><li class="result-card"><article data-adid="100000001"></article></li></ul>
+  <h1><span id="srp-breadcrumb-summary">1 - 25 von 12.345 Ergebnissen für „testrad“ in Deutschland</span></h1>
+  <ul id="srchrslt-adtable"><li><article data-adid="100000001"></article></li></ul>
 </body></html>`;
 
 const VIP_PAGE = `<!DOCTYPE html><html lang="de"><head><title>x</title></head><body>
@@ -560,7 +566,7 @@ export default async () => {
       const calls: Call[] = [];
       const drifted = page({
         summary: '1 - 25 von 12.345 Ergebnissen',
-        rows: FULL_PAGE,
+        rows: FULL_ROWS,
         next: '/s-testrad/page-2',
       });
       const provider = createKleinanzeigenProvider({

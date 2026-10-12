@@ -15,32 +15,53 @@
  * remembering to drop them.
  */
 
-/** Measured against `https://www.kleinanzeigen.de/s-fahrrad/k0`, 2026-08-21, 324 523 bytes. */
+/**
+ * Measured against `https://www.kleinanzeigen.de/s-e-bike/k0`, 2026-10-12.
+ *
+ * The result list was rebuilt on utility classes (Tailwind-style) between
+ * 2026-08-21 and 2026-10-12: every semantic class the first measurement relied
+ * on (`ad-listitem`, `aditem-*`, `text-module-begin`, `is-topad`,
+ * `breadcrump-summary`, `link[rel=next]`) is gone, the DOM order is the same.
+ * What survived are ids, `data-*` attributes, tag structure and the icon
+ * `data-title`s — so the selectors below hang on those, never on a utility
+ * class a redesign renames next week. Two exceptions are marked.
+ */
 export const SRP = {
   /** The result list container. Its PRESENCE is what separates "no hits" from "markup moved". */
   list: '#srchrslt-adtable',
-  /** One row. 27 on a full page: 25 regular ads plus 2 top ads. */
-  item: 'li.ad-listitem',
-  /** The ad inside a row. Rows without one are the site's own ad slots. */
+  /** One row. 27 on a full page: 25 regular ads, 2 top ads. The site's own ad slots are rows without an `article`. */
+  item: '#srchrslt-adtable > li',
+  /** The ad inside a row. */
   ad: 'article[data-adid]',
-  /** Top ads repeat on EVERY page of a query. Measured: 2 per page, identical across pages 1 and 2. */
-  topAdRow: 'is-topad',
-  title: '.text-module-begin > a',
-  description: '.aditem-main--middle--description',
-  /** Exact class: `p[class*="price"]` also matches `--old-price`, the struck-through former price. */
-  price: '.aditem-main--middle--price-shipping--price',
-  /** Postal code and place. Carries a zero-width space inside the place name. */
-  location: '.aditem-main--top--left',
-  /** `"Heute, 18:20"`, `"Gestern, 14:29"`, `"26.04.2026"`. EMPTY on top ads. */
-  date: '.aditem-main--top--right',
+  /**
+   * Top ads repeat on EVERY page of a query (measured: 2 per page). Their row
+   * has a direct `svg` child — the purple "Top" badge — which no regular row
+   * has. Tested against the `li`, so it is a selector for the row's own child.
+   */
+  topAdBadge: ':scope > svg',
+  title: 'h3 > a',
+  description: 'h3 + p',
+  /**
+   * Utility class, exception 1. The struck-through former price is a sibling
+   * `p.line-through`; only the current price carries `text-secondary`.
+   */
+  price: 'p.text-secondary',
+  /** Postal code and place, next to the pin icon. Carries a zero-width space inside the place name. */
+  location: 'svg[data-title="locationOutline"] + span',
+  /** `"Heute, 18:20"`, `"Gestern, 14:29"`, `"26.04.2026"`. ABSENT on top ads. */
+  date: 'svg[data-title="calendarOutline"] + span',
   image: 'img',
-  /** Also carries size tags (`"L (40)"`) and `"Direkt kaufen"` — match the text, not the presence. */
-  tag: 'span.simpletag',
-  /** Present exactly on commercial sellers. Measured: 5 of 27 rows. */
-  commercial: '.badge-hint-pro-small-srp',
-  /** `"1 - 25 von 921.982 Ergebnissen für „fahrrad“ in Deutschland"`, or the no-hits sentence. */
-  summary: '.breadcrump-summary',
-  next: 'link[rel="next"]',
+  /**
+   * Utility class, exception 2: the shipping line is `p.flex` holding the
+   * tags. The text is matched, not the presence ("Versand möglich", size tags).
+   */
+  tag: 'p.flex > span',
+  /** Present exactly on commercial sellers; the link is the shop page, which is never read. */
+  commercial: 'a[href^="/pro/"]',
+  /** `"1 - 25 von 99.200 Ergebnissen für „e bike“ in Deutschland"`, or the no-hits sentence. */
+  summary: '#srp-breadcrumb-summary',
+  /** The arrow after the page numbers. Absent on the last page; pages ≥ 6 are `span`s, not links. */
+  next: '#pagination-container a[aria-label="Nächste"]',
 } as const;
 
 /** Measured against a live ad page (`vip.html`), 2026-08-21, 287 049 bytes. */
