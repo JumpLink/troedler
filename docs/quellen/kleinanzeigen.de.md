@@ -7,7 +7,7 @@
 | **Zugangsart** | HTML der öffentlichen Suchergebnis- und Anzeigenseiten. Keine API. |
 | **Automatisierter Abruf laut AGB** | **untersagt** (§ 5 Nutzungsbedingungen) |
 | **Standard im Programm** | **aus** — `enabledByDefault: false`, und es gibt keinen Codepfad, der das umdreht |
-| **Zuletzt geprüft** | 2026-08-21 (robots.txt, Nutzungsbedingungen und Live-Abrufe an diesem Tag selbst gemessen) |
+| **Zuletzt geprüft** | 2026-10-12 (Trefferlisten-Markup neu vermessen, zwei Abrufe); robots.txt und Nutzungsbedingungen zuletzt 2026-08-21 |
 | **Registereintrag** | `packages/compliance/src/sources.ts`, `automatedAccess: 'forbidden'` |
 
 Kurz und ohne Beschönigung: **es gibt für kleinanzeigen.de keinen legalen automatisierten
@@ -249,23 +249,30 @@ keine Bilddateien — nur Bild-URLs.
 
 ### Gemessener Feldbestand
 
-Trefferliste (`/s-fahrrad/k0`, 2026-08-21):
+Trefferliste (`/s-e-bike/k0`, **2026-10-12**; 99 200 Treffer, 27 Zeilen, 670 118 Bytes):
+
+> **Umbau zwischen 2026-08-21 und 2026-10-12.** Die Trefferliste kommt jetzt mit Utility-Klassen
+> (Tailwind-Stil); `ad-listitem`, `aditem-*`, `text-module-begin`, `is-topad`, `breadcrump-summary`
+> und `link[rel="next"]` sind weg. Der Adapter lieferte seitdem `parse-failed`. Die Selektoren
+> hängen jetzt an Ids, `data-*`, Tag-Struktur und den Icon-`data-title`s — nicht an Klassen, die der
+> nächste Umbau umbenennt. Zwei Ausnahmen (`p.text-secondary`, `p.flex`) sind in `SRP` markiert.
 
 | Feld | Selektor | Anmerkung |
 |---|---|---|
+| Zeile | `#srchrslt-adtable > li` | Werbeplätze der Seite sind Zeilen ohne `article` |
 | Anzeigen-ID | `article[data-adid]` | numerisch |
 | URL | `article[data-href]` | relativ |
-| Titel | `.text-module-begin > a` | |
-| Beschreibung | JSON-LD `description`, sonst `.aditem-main--middle--description` | beides gekürzt |
-| Preis | `.aditem-main--middle--price-shipping--price` | Text: `„3.550 € VB"`, `„Zu verschenken"`, `„VB"`, `""`. **Nicht** `p[class*="price"]` — das trifft auch den durchgestrichenen `--old-price` |
-| PLZ + Ort | `.aditem-main--top--left` | enthält ein Zero-Width-Space im Ortsnamen |
-| Datum | `.aditem-main--top--right` | `„Heute, 18:20"`, `„Gestern, 14:29"`, `„26.04.2026"`; bei Top-Anzeigen **leer** |
-| Bild | JSON-LD `contentUrl` (`$_59.AUTO`), sonst `img[src]` (`$_2.AUTO`) | 27 von 27 Zeilen hatten ein auswertbares JSON-LD |
-| Versand | `span.simpletag` mit Text „Versand möglich" | dasselbe Element trägt auch Kleidergrößen und „Direkt kaufen" |
-| gewerblich | `.badge-hint-pro-small-srp` | 5 von 27 Zeilen |
-| Top-Anzeige | `li.ad-listitem.is-topad` | |
-| Trefferzahl | `.breadcrump-summary` | `„1 - 25 von 921.982 Ergebnissen …"` |
-| nächste Seite | `link[rel="next"]` | nur bis Seite 5 |
+| Titel | `h3 > a` | |
+| Beschreibung | JSON-LD `description`, sonst `h3 + p` | beides gekürzt |
+| Preis | `p.text-secondary` | Text: `„3.550 € VB"`, `„Zu verschenken"`, `„VB"`, `""`. Der durchgestrichene Altpreis ist ein Geschwister-`p.line-through` |
+| PLZ + Ort | `svg[data-title="locationOutline"] + span` | enthält ein Zero-Width-Space im Ortsnamen |
+| Datum | `svg[data-title="calendarOutline"] + span` | `„Heute, 18:20"`, `„Gestern, 14:29"`, `„26.04.2026"`; bei Top-Anzeigen **fehlt das Element** |
+| Bild | JSON-LD `contentUrl` (`$_59.AUTO`), sonst `img[src]` (`$_2.AUTO`) | |
+| Versand | `p.flex > span` mit Text „Versand möglich" | dasselbe Element kann auch Kleidergrößen tragen |
+| gewerblich | `a[href^="/pro/"]` | nur das Vorhandensein; Shopname und Link werden nie gelesen |
+| Top-Anzeige | `li` mit direktem `svg`-Kind (das „Top"-Badge) | 2 von 27 Zeilen |
+| Trefferzahl | `#srp-breadcrumb-summary` | `„1 - 25 von 99.200 Ergebnissen …"` |
+| nächste Seite | `#pagination-container a[aria-label="Nächste"]` | ab Seite 6 gibt es nur noch `span`s |
 
 Anzeigenseite: `#viewad-title`, `#viewad-price`, `#viewad-locality`, `#viewad-description-text`,
 `#viewad-extra-info` (Datum), `#viewad-ad-id-box`, `#viewad-details li.addetailslist--detail`
