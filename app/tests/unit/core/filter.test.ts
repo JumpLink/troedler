@@ -82,8 +82,16 @@ export default async () => {
     });
 
     await it('drops rows beyond the radius and keeps the near ones, with a distance', async () => {
-      const near = listing({ provider: 'quoka', id: 'n', location: { postalCode: '10247', city: null, country: 'DE', distanceKm: null } });
-      const far = listing({ provider: 'quoka', id: 'f', location: { postalCode: '80331', city: null, country: 'DE', distanceKm: null } });
+      const near = listing({
+        provider: 'quoka',
+        id: 'n',
+        location: { postalCode: '10247', city: null, country: 'DE', distanceKm: null },
+      });
+      const far = listing({
+        provider: 'quoka',
+        id: 'f',
+        location: { postalCode: '80331', city: null, country: 'DE', distanceKm: null },
+      });
       const q: SearchQuery = { text: 'x', postalCode: '10115', radiusKm: 30 };
       const done = applyPostFilters([near, far], q, [], activeFilters(q), { limit: 100 });
       expect(done.listings.map((l) => l.id)).toEqualArray(['n']);
@@ -93,7 +101,11 @@ export default async () => {
     });
 
     await it('keeps rows whose location is unknown and counts them', async () => {
-      const lost = listing({ provider: 'quoka', id: 'u', location: { postalCode: null, city: null, country: null, distanceKm: null } });
+      const lost = listing({
+        provider: 'quoka',
+        id: 'u',
+        location: { postalCode: null, city: null, country: null, distanceKm: null },
+      });
       const q: SearchQuery = { text: 'x', postalCode: '10115', radiusKm: 30 };
       const done = applyPostFilters([lost], q, [], activeFilters(q), { limit: 100 });
       expect(done.listings.length).toBe(1);
@@ -102,7 +114,11 @@ export default async () => {
     });
 
     await it('annotates the distance even when the provider applied the radius', async () => {
-      const far = listing({ provider: 'quoka', id: 'f', location: { postalCode: '80331', city: null, country: 'DE', distanceKm: null } });
+      const far = listing({
+        provider: 'quoka',
+        id: 'f',
+        location: { postalCode: '80331', city: null, country: 'DE', distanceKm: null },
+      });
       const q: SearchQuery = { text: 'x', postalCode: '10115', radiusKm: 30 };
       const done = applyPostFilters([far], q, ['radius'], activeFilters(q), { limit: 100 });
       expect(done.listings.length).toBe(1);

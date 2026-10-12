@@ -82,7 +82,11 @@ export function reportRow(r: ProviderReport) {
     rows_dropped_by_limit: r.filters.dropped,
     // Present when the radius was applied here, not by the source.
     radius_filtered_locally: r.filters.radius
-      ? { km: r.filters.radius.km, rows_too_far: r.filters.radius.removed, rows_unlocated_kept: r.filters.radius.unlocated }
+      ? {
+          km: r.filters.radius.km,
+          rows_too_far: r.filters.radius.removed,
+          rows_unlocated_kept: r.filters.radius.unlocated,
+        }
       : null,
     disclaimer: r.disclaimer,
   };
