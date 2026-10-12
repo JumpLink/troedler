@@ -98,33 +98,33 @@ function page(options: { summary: string; rows: string; next?: string | null }):
 }
 
 const FULL_ROWS = [
-    ad({
-      id: '900000001',
-      title: 'Bezahlte Platzierung',
-      price: '999 €',
-      place: '10115 Berlin',
-      date: '',
-      topAd: true,
-    }),
-    ad({
-      id: '100000001',
-      title: 'Herrenrad 28 Zoll',
-      price: '3.550 € VB',
-      place: `22083 Hamburg Barmbek-${ZWSP}Süd`,
-      date: 'Heute, 17:08',
-      versand: true,
-      teaser: 'Guter Zustand, Rechnung liegt bei.',
-    }),
-    ad({
-      id: '100000002',
-      title: 'Kinderrad',
-      price: 'Zu verschenken',
-      place: '83627 Warngau',
-      date: 'Gestern, 14:29',
-      pro: true,
-    }),
-    ad({ id: '100000003', title: 'Rahmen', price: 'VB', place: '36179 Bebra', date: '26.04.2026' }),
-  ].join('');
+  ad({
+    id: '900000001',
+    title: 'Bezahlte Platzierung',
+    price: '999 €',
+    place: '10115 Berlin',
+    date: '',
+    topAd: true,
+  }),
+  ad({
+    id: '100000001',
+    title: 'Herrenrad 28 Zoll',
+    price: '3.550 € VB',
+    place: `22083 Hamburg Barmbek-${ZWSP}Süd`,
+    date: 'Heute, 17:08',
+    versand: true,
+    teaser: 'Guter Zustand, Rechnung liegt bei.',
+  }),
+  ad({
+    id: '100000002',
+    title: 'Kinderrad',
+    price: 'Zu verschenken',
+    place: '83627 Warngau',
+    date: 'Gestern, 14:29',
+    pro: true,
+  }),
+  ad({ id: '100000003', title: 'Rahmen', price: 'VB', place: '36179 Bebra', date: '26.04.2026' }),
+].join('');
 
 const FULL_PAGE = page({
   summary: '1 - 25 von 12.345 Ergebnissen für „testrad“ in Deutschland',
