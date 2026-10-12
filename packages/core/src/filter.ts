@@ -21,6 +21,7 @@
  * source was willing to hand over.
  */
 
+import { haversineKm, postalCentroid, type GeoPoint } from './geo/index.ts';
 import { normalizeGtin, sortListings } from './merge.ts';
 import type { Listing } from './listing.ts';
 import type { FilterKey, SearchQuery } from './query.ts';
@@ -73,10 +74,10 @@ function matches(listing: Listing, key: FilterKey, q: SearchQuery): boolean {
       // on which spelling its source printed first.
       return listing.gtin === null || normalizeGtin(listing.gtin) === normalizeGtin(q.gtin ?? null);
     case 'radius':
-      // Only the source can answer this; it needs a geocoder we deliberately do
-      // not have. When the provider did not apply it, the rows pass through and
-      // `--explain` reports the filter as unenforced rather than pretending.
-      return true;
+      // A row we cannot place stays: dropping it would hide every ad whose
+      // source prints no postcode, and "near" is not something we know about it.
+      // `applyPostFilters` counts these and says so.
+      return listing.location.distanceKm === null || listing.location.distanceKm <= (q.radiusKm ?? Infinity);
     case 'sort':
       return true;
   }
@@ -119,6 +120,15 @@ function known(listing: Listing, key: FilterKey): boolean {
   }
 }
 
+/** What the local radius filter did — present only when it ran. */
+export interface RadiusReport {
+  readonly km: number;
+  /** Rows farther away than `km`. */
+  readonly removed: number;
+  /** Rows with no usable postcode, kept and flagged by `distanceKm === null`. */
+  readonly unlocated: number;
+}
+
 export interface PostFilterReport {
   /** What the kernel had to do itself — filters, and `sort` when it sorted. */
   readonly clientSide: readonly FilterKey[];
@@ -136,6 +146,8 @@ export interface PostFilterReport {
    * the same line.
    */
   readonly dropped: number;
+  /** Set when the radius was applied here, from postcode centroids. `null` otherwise. */
+  readonly radius: RadiusReport | null;
 }
 
 export interface PostFilterOptions {
@@ -144,15 +156,35 @@ export interface PostFilterOptions {
 }
 
 /**
+ * Distance from the query's postcode, on every row we can place.
+ *
+ * Done whether or not this process filters by it: a source that applied the
+ * radius itself (Zoll-Auktion) still leaves the reader asking how far a hit is.
+ * A distance the source computed is kept as it came.
+ */
+function withDistance(listing: Listing, origin: GeoPoint): Listing {
+  if (listing.location.distanceKm !== null) return listing;
+  const there = postalCentroid(listing.location.postalCode, listing.location.country);
+  if (!there) return listing;
+  return {
+    ...listing,
+    location: { ...listing.location, distanceKm: Math.round(haversineKm(origin, there)) },
+  };
+}
+
+/**
  * Filter, sort, cut — and report which of the three the kernel did itself.
  */
 export function applyPostFilters(
-  listings: readonly Listing[],
+  rows: readonly Listing[],
   query: SearchQuery,
   appliedByProvider: readonly FilterKey[],
   activeKeys: readonly FilterKey[],
   options: PostFilterOptions,
 ): { listings: Listing[]; report: PostFilterReport } {
+  const origin = query.postalCode ? postalCentroid(query.postalCode) : null;
+  const listings = origin ? rows.map((l) => withDistance(l, origin)) : rows;
+
   const todo = activeKeys.filter((k) => !appliedByProvider.includes(k));
 
   // With no rows there is nothing to call structurally inert: "this source
@@ -162,10 +194,13 @@ export function applyPostFilters(
       ? []
       : todo.filter((k) => KEEPS_UNKNOWN.includes(k) && !listings.some((l) => known(l, k)));
 
+  // The radius is enforceable exactly when the origin could be placed. If it
+  // could not (not a German postcode), it stays in the honest gap.
+  const radiusHere = todo.includes('radius') && origin !== null;
   const enforceable = todo.filter(
-    (k) => k !== 'radius' && k !== 'sort' && !inert.includes(k),
+    (k) => (k !== 'radius' || radiusHere) && k !== 'sort' && !inert.includes(k),
   );
-  const unenforced = [...todo.filter((k) => k === 'radius'), ...inert];
+  const unenforced = [...todo.filter((k) => k === 'radius' && !radiusHere), ...inert];
 
   const kept = listings.filter((l) => enforceable.every((k) => matches(l, k, query)));
 
@@ -178,6 +213,14 @@ export function applyPostFilters(
 
   const out = ordered.slice(0, Math.max(0, options.limit));
 
+  const radius: RadiusReport | null = radiusHere
+    ? {
+        km: query.radiusKm ?? 0,
+        removed: listings.filter((l) => !matches(l, 'radius', query)).length,
+        unlocated: listings.filter((l) => l.location.distanceKm === null).length,
+      }
+    : null;
+
   return {
     listings: out,
     report: {
@@ -186,6 +229,7 @@ export function applyPostFilters(
       before: listings.length,
       after: ordered.length,
       dropped: ordered.length - out.length,
+      radius,
     },
   };
 }

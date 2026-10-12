@@ -35,6 +35,7 @@ import {
 import { isTransient } from './errors.ts';
 import type { Listing, Location, ProviderId } from './listing.ts';
 import { BASIS_LABEL, type PriceBand } from './stats.ts';
+import type { RadiusReport } from './filter.ts';
 import type { CrossCheckReport, ProviderReport } from './search.ts';
 
 /** The label for a source, falling back to its id. Four copies before this existed. */
@@ -53,6 +54,20 @@ export const SHIPPING_INCLUDED = ' inkl. Versand';
 /** `"30966 Hemmingen"` — postcode and town, whichever of the two exists. */
 export function fmtLocation(location: Location): string {
   return [location.postalCode, location.city].filter(Boolean).join(' ');
+}
+
+/**
+ * The sentence for a radius this process applied itself.
+ *
+ * It names the method because the result is not the source's own radius: the
+ * distance is between postcode centroids, and rows without a postcode are kept
+ * — a reader who sees "30 km" and a bike 38 km away should know why.
+ */
+export function radiusNotice(radius: RadiusReport): string {
+  return (
+    `Umkreis ${radius.km} km hier nachgefiltert (Luftlinie zwischen PLZ-Mittelpunkten): ` +
+    `${radius.removed} zu weit entfernt, ${radius.unlocated} ohne bekannten Ort behalten.`
+  );
 }
 
 /** A store row's `minor` + `currency` in one step. Six copies before this existed. */
@@ -299,6 +314,9 @@ export function explainLines(report: ProviderReport): ExplainLine[] {
       strong: false,
     },
   ];
+  if (report.filters.radius) {
+    lines.push({ text: radiusNotice(report.filters.radius), strong: false });
+  }
   if (report.filters.unenforced.length > 0) {
     lines.push({
       text: `NICHT angewandt: ${report.filters.unenforced.join(', ')} — diese Quelle kann es nicht, und lokal ist es nicht entscheidbar.`,

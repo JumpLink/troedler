@@ -1,5 +1,6 @@
 export * from './errors.ts';
 export * from './filter.ts';
+export * from './geo/index.ts';
 export * from './labels.ts';
 export * from './limits.ts';
 export * from './listing.ts';

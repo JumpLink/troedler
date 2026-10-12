@@ -187,6 +187,9 @@ The reusable packages `core`, `http`, `html`, `store` and `compliance` under `pa
 adapters (`ebay`, `discogs`, `booklooker`, `auktion`, `kleinanzeigen`, `markt`) stay AGPL on
 purpose: they are adapters for third-party platforms.
 
+The offline postcode table in `packages/core/src/geo/` is derived from [GeoNames](https://www.geonames.org/) postal
+code data, licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); see [docs/geodaten.md](docs/geodaten.md).
+
 Free to use, modify and share. The AGPL adds one condition to the GPL: anyone who
 runs this program **as a network service** must offer that service's users the
 source of their version. Running it locally for yourself adds no obligation.

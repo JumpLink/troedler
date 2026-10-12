@@ -69,7 +69,11 @@ export interface Location {
   readonly postalCode: string | null;
   readonly city: string | null;
   readonly country: string | null;
-  /** Kilometres from the query's origin, when the source computed it. Never computed here. */
+  /**
+   * Kilometres from the query's origin: the source's own figure when it gave one,
+   * otherwise the straight line between postcode centroids (German postcodes only),
+   * filled in by `applyPostFilters`. `null` means the location could not be placed.
+   */
   readonly distanceKm: number | null;
 }
 
