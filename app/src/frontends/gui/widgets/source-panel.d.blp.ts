@@ -24,6 +24,6 @@ export declare const InternalChildren: ['heading', 'body'];
 
 /** The `_`-prefixed members GJS installs for them. Merge it into the class interface. */
 export interface Children {
-    _heading: Gtk.Label;
-    _body: Gtk.Box;
+  _heading: Gtk.Label;
+  _body: Gtk.Box;
 }

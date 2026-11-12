@@ -24,7 +24,7 @@ export declare const InternalChildren: ['max_price', 'seller', 'explain'];
 
 /** The `_`-prefixed members GJS installs for them. Merge it into the class interface. */
 export interface Children {
-    _max_price: Adw.SpinRow;
-    _seller: Adw.ComboRow;
-    _explain: Adw.SwitchRow;
+  _max_price: Adw.SpinRow;
+  _seller: Adw.ComboRow;
+  _explain: Adw.SwitchRow;
 }

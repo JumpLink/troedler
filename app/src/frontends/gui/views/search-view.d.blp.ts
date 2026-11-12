@@ -22,24 +22,24 @@ export declare const GTypeName: 'TroedlerSearchView';
  * upstream half.
  */
 export declare const InternalChildren: [
-    'entry',
-    'filter_button',
-    'go_button',
-    'chips',
-    'notices',
-    'scroller',
-    'status',
-    'results',
+  'entry',
+  'filter_button',
+  'go_button',
+  'chips',
+  'notices',
+  'scroller',
+  'status',
+  'results',
 ];
 
 /** The `_`-prefixed members GJS installs for them. Merge it into the class interface. */
 export interface Children {
-    _entry: Gtk.SearchEntry;
-    _filter_button: Gtk.MenuButton;
-    _go_button: Gtk.Button;
-    _chips: Gtk.Box;
-    _notices: Gtk.Box;
-    _scroller: Gtk.ScrolledWindow;
-    _status: Adw.StatusPage;
-    _results: Gtk.Box;
+  _entry: Gtk.SearchEntry;
+  _filter_button: Gtk.MenuButton;
+  _go_button: Gtk.Button;
+  _chips: Gtk.Box;
+  _notices: Gtk.Box;
+  _scroller: Gtk.ScrolledWindow;
+  _status: Adw.StatusPage;
+  _results: Gtk.Box;
 }
